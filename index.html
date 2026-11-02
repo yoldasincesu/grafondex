@@ -324,6 +324,85 @@ td.t .favstar{width:24px;height:24px;font-size:14px}
 table.lines td,table.lines th{padding:6px 4px}
 table.lines td.t{white-space:nowrap;font-weight:700}
 table.lines td.t .logo{vertical-align:middle;margin-right:4px}
+
+/* live games */
+.livedot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--live);margin-right:4px;vertical-align:1px;animation:livepulse 1.3s ease-in-out infinite}
+@keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(229,56,59,.55)}70%{box-shadow:0 0 0 7px rgba(229,56,59,0)}100%{box-shadow:0 0 0 0 rgba(229,56,59,0)}}
+.livetag{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--live);color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;vertical-align:1px}
+.liveclk::after{content:'';display:inline-block}
+.seasonbar{margin-bottom:10px}
+.seasonbar .picker{margin-bottom:0}
+
+/* community: forum, chat, accounts, moderation */
+.seg{overflow-x:auto;scrollbar-width:none}.seg::-webkit-scrollbar{display:none}.seg button,.seg a{white-space:nowrap;padding-left:10px;padding-right:10px}
+.form-block>input,.form-block>textarea{padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);font:inherit}
+textarea{resize:vertical}
+.btn.ghost{background:var(--card2);color:var(--accent);border:1px solid var(--line)}
+.btn[href]{display:block}
+.authbtns{display:flex;gap:8px}.authbtns .btn{flex:1}
+.adminbadge{font-style:normal;font-size:9px;font-weight:800;background:#c0392b;color:#fff;border-radius:6px;padding:1px 5px;letter-spacing:.4px;vertical-align:1px}
+.postrow{padding:12px!important;gap:10px!important}.pbody{flex:1;min-width:0}.pbody b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pbody small{color:var(--muted);font-size:12px}
+.pcount{color:var(--muted);font-size:13px;white-space:nowrap}
+.ptext{white-space:pre-wrap;word-break:break-word}
+.chat{display:flex;flex-direction:column}
+.chatlog{height:min(52vh,430px);overflow-y:auto;background:var(--card);border-radius:14px;padding:4px 12px;border:1px solid var(--line);scroll-behavior:smooth}
+.cmsg{padding:8px 0;border-bottom:1px solid var(--line)}.cmsg:last-child{border-bottom:0}
+.cmeta{display:flex;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap}.cmeta small{color:var(--muted)}
+.cu{font-weight:700;color:var(--accent)}.cu.adm{color:#c0392b}
+.cmsg.mine .cu{color:#0a8f5a}
+.ctext{font-size:14px;word-break:break-word;margin-top:2px}
+.cact{margin-left:auto;display:inline-flex;gap:3px;flex-wrap:wrap}
+.cbtn{min-width:28px;height:26px;border-radius:8px;font-size:13px;color:var(--muted);padding:0 5px}
+.cbtn.txt{font-size:10.5px;font-weight:700;border:1px solid var(--line)}
+.cbtn:disabled{opacity:.5}
+.chatbar{display:flex;gap:8px;margin-top:8px}
+.chatin{flex:1;min-width:0;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit}
+.chatsend{width:48px;flex:none;border-radius:12px;background:var(--grad);color:#fff;font-size:18px}
+.chatbar.login{flex-direction:column;align-items:stretch;text-align:center}
+.chaterr{color:var(--live);min-height:16px;margin-top:4px}
+.modbtns{display:flex;flex-wrap:wrap;gap:6px}
+.modbtns button{padding:9px 11px;border-radius:10px;background:var(--card2);border:1px solid var(--line);font-size:12.5px;font-weight:600}
+.modbtns .danger{color:#c0392b}
+
+/* other sports */
+.match.static{cursor:default}
+.setline{color:var(--muted);font-weight:500;margin-right:10px;font-size:12.5px}.setline i{font-style:normal;display:inline-block;min-width:14px;text-align:center}
+.logo.ph{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--card2)}
+
+/* ---- polish: soft shapes, depth and motion ---- */
+:root{--radius:16px;--shadow:0 1px 2px rgba(15,40,100,.05),0 8px 24px rgba(15,40,100,.07)}
+html{scroll-behavior:smooth}
+body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+header{backdrop-filter:saturate(1.3) blur(8px);box-shadow:0 4px 18px rgba(15,79,216,.28)}
+.card{border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid rgba(224,233,249,.75);overflow:hidden}
+.card h2{letter-spacing:.2px}
+#app>*{animation:rise .32s cubic-bezier(.2,.7,.2,1) both}
+#app>*:nth-child(2){animation-delay:.04s}#app>*:nth-child(3){animation-delay:.08s}#app>*:nth-child(4){animation-delay:.12s}#app>*:nth-child(n+5){animation-delay:.16s}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.match,.lrow a,.tcell,.postrow,.rrow{transition:background .15s ease,transform .12s ease}
+.match:active,.lrow a:active,.tcell:active,.postrow:active{background:var(--card2);transform:scale(.995)}
+.btn,.favbtn,.chatsend{transition:transform .12s ease,box-shadow .2s ease,filter .2s}
+.btn{box-shadow:0 6px 16px rgba(22,103,242,.28)}
+.btn:active,.chatsend:active{transform:scale(.97);filter:brightness(.96)}
+.seg button,.seg a,.sportbar button,.datebar a{transition:background .18s ease,color .18s ease,box-shadow .18s ease}
+.seg button.on,.seg a.on{box-shadow:0 3px 10px rgba(22,103,242,.3)}
+.sportbar button.on{box-shadow:0 4px 12px rgba(22,103,242,.3)}
+nav#tabs{background:rgba(255,255,255,.94);backdrop-filter:blur(12px);box-shadow:0 -6px 20px rgba(15,40,100,.07);border-top:1px solid rgba(224,233,249,.8)}
+nav#tabs a{transition:color .2s ease,transform .2s ease;position:relative}
+nav#tabs a.on{transform:translateY(-1px)}
+nav#tabs a.on::before{content:'';position:absolute;top:0;left:30%;right:30%;height:3px;border-radius:0 0 4px 4px;background:var(--grad)}
+.logo{transition:transform .2s ease}.match:active .logo{transform:scale(1.06)}
+.tl-row{transition:background .15s}.cmsg{animation:rise .25s ease both}
+.favstar,.pin{transition:transform .15s ease,color .15s ease}.favstar:active,.pin:active{transform:scale(1.25)}
+input,select,textarea{transition:border-color .15s ease,box-shadow .15s ease}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(22,103,242,.15)}
+/* skeleton loading */
+.sk{display:block;height:11px;border-radius:6px;background:linear-gradient(90deg,#e6eefc 25%,#f4f8ff 50%,#e6eefc 75%);background-size:200% 100%;animation:shimmer 1.3s linear infinite}
+.sk.w40{width:40%}.sk.w50{width:50%}.sk.w70{width:70%}.sk.dot{width:34px;height:34px;border-radius:50%;flex:none}
+.skrow{display:flex;gap:12px;align-items:center;padding:12px 14px}.skrow span{flex:1;display:flex;flex-direction:column;gap:8px}
+.card.skel h2{padding:14px}
+@keyframes shimmer{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
@@ -338,9 +417,10 @@ table.lines td.t .logo{vertical-align:middle;margin-right:4px}
   <a href="#/matches" data-tab="matches">⚽<span>Maçlar</span></a>
   <a href="#/leagues" data-tab="leagues">🏆<span>Ligler</span></a>
   <a href="#/favs" data-tab="favs">★<span>Favoriler</span></a>
+  <a href="#/forum" data-tab="forum">💬<span>Topluluk</span></a>
   <a href="#/settings" data-tab="settings">⚙️<span>Ayarlar</span></a>
 </nav>
-<script src="i18n.js?v=12"></script>
-<script src="app.js?v=12"></script>
+<script src="i18n.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>
