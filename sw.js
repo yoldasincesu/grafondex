@@ -1,5 +1,5 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
-const V = 'grafondex-v7';
+const V = 'grafondex-v8';
 const SHELL = ['./', 'index.html', 'i18n.js', 'app.js','manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png'];
 
 self.addEventListener('install', e => {
@@ -23,7 +23,7 @@ self.addEventListener('fetch', e => {
   if (url.origin === location.origin) {
     // every page load is the same app, so store it under one key
     e.respondWith(networkFirst(e.request, V, e.request.mode === 'navigate' ? './' : e.request));
-  } else if (url.hostname === 'site.api.espn.com') {
+  } else if (url.hostname === 'site.web.api.espn.com' || url.hostname === 'sports.core.api.espn.com') {
     e.respondWith(networkFirst(e.request, V + '-api'));
   }
 });

@@ -1,12 +1,13 @@
 // Grafondex Live Score — app logic (texts come from i18n.js via t())
-const SITE = 'https://site.api.espn.com/apis/site/v2/sports/';
+// site.web.api is the host espn.com itself uses; site.api.espn.com turns real browsers away ("Access Denied")
+const SITE = 'https://site.web.api.espn.com/apis/site/v2/sports/';
 const ESPN = SITE + 'soccer/'; // soccer-wide endpoints (soccer/all/…)
 const HOUR = 3600000;
 // every league lives at "<sport>/<slug>"; soccer slugs are stored without the sport
 const pathOf = l => leagueOf(l || '').path || `soccer/${l}`;
 const sportOf = l => pathOf(l).split('/')[0];
 const api = l => SITE + pathOf(l);
-const apiSt = l => 'https://site.api.espn.com/apis/v2/sports/' + pathOf(l);
+const apiSt = l => 'https://site.web.api.espn.com/apis/v2/sports/' + pathOf(l);
 const core = l => { const [sp, lg] = pathOf(l).split('/'); return `https://sports.core.api.espn.com/v2/sports/${sp}/leagues/${lg}`; };
 
 // [slug, official name, ESPN logo number, has a standings table]. Official names are the same in
@@ -418,18 +419,22 @@ function usRosterHtml(roster) {
 }
 
 async function viewTeam(league, id) {
-  const [info, roster, evs] = await Promise.all([
-    get(`${api(league)}/teams/${id}`, 300000).catch(() => null),
+  // ESPN's team-info endpoint is closed to browsers, so name, rank and record come from the standings
+  const [table, roster, evs] = await Promise.all([
+    get(`${apiSt(league)}/standings`, 120000).catch(() => null),
     get(`${api(league)}/teams/${id}/roster`, 300000).catch(() => null),
     teamEvents(id, league),
   ]);
-  const tm = info?.team || {};
-  const name = tm.displayName || favs.find(f => f.id == id)?.name || t('th.team');
+  const groups = table?.children || [];
+  const group = groups.find(g => g.standings?.entries?.some(e => e.team.id == id));
+  const entry = group?.standings.entries.find(e => e.team.id == id);
+  const stat = n => entry?.stats.find(s => s.name === n);
+  const name = entry?.team.displayName || roster?.team?.displayName || favs.find(f => f.id == id)?.name || t('th.team');
   setTitle(name);
   const fav = isFav(id, league);
-  const m = (tm.standingSummary || '').match(/^(\d+)\w* in (.+)$/);
-  const summary = m && LANG !== 'en' ? t('rankIn', m[1], m[2]) : (tm.standingSummary || '');
-  const rec = tm.record?.items?.[0]?.summary;
+  const rank = stat('rank')?.value || stat('playoffSeed')?.value;
+  const summary = rank ? t('rankIn', rank, groups.length > 1 ? group.name : lname(leagueOf(league))) : '';
+  const rec = stat('overall')?.displayValue;
   let html = `<div class="card hero">${img(id, 'big', league)}<div style="font-size:20px;font-weight:700;margin-top:8px">${esc(name)}</div>
     <div class="st">${esc(summary)}${rec ? ' · ' + esc(rec) + (sportOf(league) === 'soccer' ? ' ' + t('wdl') : '') : ''}</div>
     <button class="favbtn ${fav ? 'on' : ''}" data-fav="${id}" data-name="${esc(name)}" data-league="${league}">${fav ? t('inFavs') : t('addFav')}</button></div>`;
@@ -594,9 +599,15 @@ async function leadersHtml(league, kind) {
   return `<div class="card"><table><thead><tr><th>#</th><th style="text-align:left">${t('player')}</th><th>${t('apps')}</th><th>${kind === 'gol' ? t('goalCol') : t('assistCol')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+// team list from the standings (ESPN's own team-list endpoint refuses browsers); cups fall back to this round's games
 async function teamsHtml(league) {
-  const j = await get(`${api(league)}/teams`, HOUR);
-  const ts = (j.sports?.[0]?.leagues?.[0]?.teams || []).map(x => x.team).sort((x, y) => x.displayName.localeCompare(y.displayName, LOCALE()));
+  const j = await get(`${apiSt(league)}/standings`, 120000).catch(() => null);
+  let ts = (j?.children || []).flatMap(g => g.standings?.entries || []).map(e => e.team);
+  if (!ts.length) {
+    const sb = await get(`${api(league)}/scoreboard`, HOUR).catch(() => null);
+    ts = (sb?.events || []).flatMap(e => e.competitions[0].competitors.map(c => c.team));
+  }
+  ts = [...new Map(ts.map(x => [x.id, x])).values()].sort((x, y) => x.displayName.localeCompare(y.displayName, LOCALE()));
   if (!ts.length) return `<div class="empty">${t('noTeams')}</div>`;
   return `<div class="tgrid">${ts.map(tm => `<a class="tcell" href="#/team/${league}/${tm.id}">${img(tm.id, 'mid', league)}<span>${esc(tm.displayName)}</span>${favStar(tm.id, tm.displayName, league)}</a>`).join('')}</div>`;
 }
