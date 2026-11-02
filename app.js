@@ -32,6 +32,13 @@ GROUPS.push([['nba', 'NBA', 'basketball/nba'], ['nhl', 'NHL', 'hockey/nhl'], ['n
   logoUrl: `https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500/${id}.png&w=64&h=64`,
 })));
 const LEAGUES = GROUPS.flat();
+// ESPN's numeric league ids, used to sort the "all football" list into our leagues
+const ESPN_NUM = { 'tur.1': 3946, 'uefa.champions': 775, 'uefa.europa': 776, 'uefa.europa.conf': 20296, 'uefa.super_cup': 5462, 'eng.1': 700, 'esp.1': 740, 'ita.1': 730,
+  'ger.1': 720, 'fra.1': 710, 'ned.1': 725, 'por.1': 715, 'bel.1': 3901, 'sco.1': 735, 'aut.1': 3907, 'sui.1': 3944, 'gre.1': 3955, 'rus.1': 3939, 'eng.2': 3914, 'esp.2': 3921,
+  'ita.2': 3931, 'ger.2': 3927, 'fra.2': 3926, 'eng.fa': 3918, 'eng.league_cup': 3920, 'esp.copa_del_rey': 3951, 'ita.coppa_italia': 3956, 'ger.dfb_pokal': 3954,
+  'fra.coupe_de_france': 3952, 'fifa.world': 606, 'fifa.worldq.uefa': 786, 'uefa.euro': 781, 'uefa.euroq': 3947, 'uefa.nations': 2395, 'fifa.friendly': 3922,
+  'ksa.1': 21231, 'usa.1': 770, 'bra.1': 630, 'arg.1': 745, 'conmebol.libertadores': 783, 'fifa.cwc': 5501 };
+for (const L of LEAGUES) L.espn = ESPN_NUM[L.id];
 const leagueOf = id => LEAGUES.find(l => l.id === id) || { id, name: id, logo: 0 };
 const lname = L => L.name;
 const isTff = id => id === 'tur.cup'; // Turkish Cup comes from TFF through the user's own server
@@ -61,6 +68,11 @@ let favs = store.get('favs', []); // [{id, name, league}]
 let enabled = store.get('leagues', ['tur.1', 'tur.cup', 'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1']);
 // the Turkish Cup arrived later: switch it on once for people who already saved a league list
 if (!store.get('cupAdded', false)) { if (!enabled.includes('tur.cup')) enabled.push('tur.cup'); store.set('leagues', enabled); store.set('cupAdded', true); }
+// every football league is on by default now (all of them come in one request)
+if (!store.get('allSoccerAdded', false)) {
+  for (const L of GROUPS.flat()) if (!L.path && !enabled.includes(L.id)) enabled.push(L.id);
+  store.set('leagues', enabled); store.set('allSoccerAdded', true);
+}
 // same for the American leagues
 if (!store.get('usAdded', false)) { for (const l of ['nba', 'nhl', 'nfl']) if (!enabled.includes(l)) enabled.push(l); store.set('leagues', enabled); store.set('usAdded', true); }
 let pinned = store.get('pinned', ['tur.1']);
@@ -155,6 +167,11 @@ function timelineHtml(items) {
 const favStar = (id, name, league) => `<button class="favstar ${isFav(id, league) ? 'on' : ''}" data-fav="${id}" data-name="${esc(name)}" data-league="${league}" aria-label="${t('favorite')}">${isFav(id, league) ? '★' : '☆'}</button>`;
 const formHtml = form => form ? `<div class="form">${[...form].slice(-5).map(c => `<i class="${c}">${t('res.' + c)}</i>`).join('')}</div>` : '';
 
+// ---- sport switcher (Matches, Leagues, Favourites show one sport at a time) ----
+const SPORTS = [['soccer', '⚽', 'sp.soccer'], ['basketball', '🏀', 'sp.basketball'], ['hockey', '🏒', 'sp.hockey'], ['football', '🏈', 'sp.football']];
+let curSport = store.get('sport', 'soccer');
+const sportBar = () => `<div class="sportbar">${SPORTS.map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${ic}</span>${t(k)}</button>`).join('')}</div>`;
+
 // ---- Matches tab ----
 async function viewMatches(dateStr) {
   setTitle(t('nav.matches'));
@@ -176,12 +193,35 @@ async function viewMatches(dateStr) {
 
   // ESPN groups days by US time, so the previous US day can hold late European-time games
   const days = [ymd(addDays(d, -1)), key];
-  const [res, tvItems, ztk] = await Promise.all([
-    Promise.allSettled(enabled.filter(l => !isTff(l)).flatMap(l => days.map(day =>
+  const mine = enabled.filter(l => sportOf(l) === curSport && !isTff(l));
+  const soccer = curSport === 'soccer';
+  // football: one "all football" list per day (every league at once, refreshed each minute);
+  // leagues ESPN can't place in that list, and the other sports, are fetched league by league
+  const single = soccer ? mine.filter(l => !leagueOf(l).espn) : mine;
+  const [allDays, res, tvItems, ztk] = await Promise.all([
+    soccer ? Promise.allSettled(days.map(day => get(`${SITE}soccer/all/scoreboard?dates=${day}&limit=500`, 60000))) : [],
+    Promise.allSettled(single.flatMap(l => days.map(day =>
       get(`${api(l)}/scoreboard?dates=${day}`).then(j => ({ l, events: j.events || [] }))))),
-    tvList(isoDay(d)),
-    enabled.includes('tur.cup') && workerBase() ? ztkData().catch(() => null) : null,
+    soccer ? tvList(isoDay(d)) : [],
+    soccer && enabled.includes('tur.cup') && workerBase() ? ztkData().catch(() => null) : null,
   ]);
+  if (soccer) {
+    const byEspn = Object.fromEntries(LEAGUES.filter(L => L.espn).map(L => [String(L.espn), L.id]));
+    const grouped = {};
+    for (const r of allDays) for (const ev of r.value?.events || []) {
+      const l = byEspn[(ev.uid || '').match(/~l:(\d+)/)?.[1]];
+      if (l && mine.includes(l)) (grouped[l] ||= []).push(ev);
+    }
+    // leagues with a game in progress: fetch their own small scoreboard every few seconds for fresh scores
+    const live = Object.entries(grouped).filter(([, evs]) => evs.some(e => e.status?.type?.state === 'in')).map(([l]) => l);
+    const fresh = await Promise.allSettled(live.flatMap(l => days.map(day => get(`${api(l)}/scoreboard?dates=${day}`).then(j => ({ l, events: j.events || [] })))));
+    for (const f of fresh) if (f.status === 'fulfilled') {
+      const ids = new Map(f.value.events.map(e => [e.id, e]));
+      grouped[f.value.l] = grouped[f.value.l].map(e => ids.get(e.id) || e);
+    }
+    for (const [l, events] of Object.entries(grouped)) res.push({ status: 'fulfilled', value: { l, events } });
+    if (allDays.every(r => r.status === 'rejected') && !res.some(r => r.status === 'fulfilled')) throw new Error(t('noConn'));
+  }
   const tvOf = ev => { const [h, a] = sides(ev.competitions[0]); return tvItems.length ? tvFor(tvItems, ev.date, h.team.displayName, a.team.displayName) : ''; };
   const cupToday = (ztk?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
   const byLeague = {}, seen = new Set(), favRows = [];
@@ -194,15 +234,15 @@ async function viewMatches(dateStr) {
       if (ev.competitions[0].competitors.some(c => isFav(c.team.id, r.value.l))) favRows.push([ev, r.value.l]);
     }
   }
-  if (res.length && res.every(r => r.status === 'rejected')) throw new Error(t('noConn'));
-  let html = bar;
+  if (!soccer && res.length && res.every(r => r.status === 'rejected')) throw new Error(t('noConn'));
+  let html = sportBar() + bar;
   const byDate = (x, y) => new Date(x.date) - new Date(y.date);
   if (favRows.length) {
     favRows.sort((x, y) => byDate(x[0], y[0]));
     html += `<div class="card"><h2>${t('myFavs')}</h2>${favRows.map(([e, l]) => matchRow(e, l, false, tvOf(e))).join('')}</div>`;
   }
   const head = L => `<h2><a class="lglink" href="#/league/${L.id}">${lgIcon(L.id)}<span class="lgname">${esc(lname(L))}<small>${esc(regionName(L.id))}</small></span></a>${L.table ? `<a href="#/league/${L.id}/puan">${t('table')}</a>` : ''}</h2>`;
-  for (const L of LEAGUES) {
+  for (const L of LEAGUES.filter(L => sportOf(L.id) === curSport)) {
     if (isTff(L.id)) {
       if (cupToday.length) html += `<div class="card">${head(L)}${cupToday.sort((x, y) => x.iso.localeCompare(y.iso)).map(tffRow).join('')}</div>`;
       continue;
@@ -466,8 +506,12 @@ async function viewTeam(league, id) {
 // ---- Favourites ----
 async function viewFavs() {
   setTitle(t('nav.favs'));
-  if (!favs.length) return `<div class="empty">${t('noFavs')}</div>`;
-  const all = await Promise.all(favs.map(f => teamEvents(f.id, f.league).then(e => ({ f, e })).catch(() => ({ f, e: { past: [], live: [], next: [] } }))));
+  const mineF = favs.filter(f => sportOf(f.league) === curSport);
+  if (!mineF.length) return sportBar() + `<div class="empty">${t('noFavs')}</div>`;
+  return sportBar() + await favCards(mineF);
+}
+async function favCards(list) {
+  const all = await Promise.all(list.map(f => teamEvents(f.id, f.league).then(e => ({ f, e })).catch(() => ({ f, e: { past: [], live: [], next: [] } }))));
   return all.map(({ f, e }) => {
     const rows = [...e.live, ...e.past.slice(0, 1), ...e.next.slice(0, 2)].map(ev => matchRow(ev, leagueOfEvent(ev, f.league), true)).join('');
     return `<div class="card"><h2>${img(f.id, '', f.league)} <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/team/${f.league}/${f.id}">${t('teamLink')}</a></h2>${rows || `<div class="empty" style="padding:16px">${t('noMatch')}</div>`}</div>`;
@@ -481,9 +525,11 @@ async function viewLeagues() {
   setTitle(t('nav.leagues'));
   const row = L => `<div class="lrow"><a href="#/league/${L.id}">${lgIcon(L.id)}<span class="nm">${esc(lname(L))}${regionLine(L.id)}</span><span class="go">›</span></a>
     <button class="pin ${pinned.includes(L.id) ? 'on' : ''}" data-pin="${L.id}" aria-label="${t('pin')}">${pinned.includes(L.id) ? '★' : '☆'}</button></div>`;
-  const pins = LEAGUES.filter(L => pinned.includes(L.id));
-  return (pins.length ? `<div class="card"><h2>${t('pinned')}</h2>${pins.map(row).join('')}</div>` : '')
-    + GROUPS.map((ls, g) => `<div class="card"><h2>${t('grp.' + g)}</h2>${ls.map(row).join('')}</div>`).join('');
+  const ofSport = L => sportOf(L.id) === curSport;
+  const pins = LEAGUES.filter(L => pinned.includes(L.id) && ofSport(L));
+  return sportBar() + (pins.length ? `<div class="card"><h2>${t('pinned')}</h2>${pins.map(row).join('')}</div>` : '')
+    + GROUPS.map((ls, g) => [g, ls.filter(ofSport)]).filter(([, ls]) => ls.length)
+      .map(([g, ls]) => `<div class="card"><h2>${curSport === 'soccer' ? t('grp.' + g) : t('cc.usa')}</h2>${ls.map(row).join('')}</div>`).join('');
 }
 
 // ESPN lists every match day; consecutive days (max 4) make one round
@@ -869,6 +915,8 @@ document.addEventListener('click', async e => {
   // tabs and round arrows inside a league page don't pile up in history
   const rl = e.target.closest('a[data-replace]');
   if (rl) { e.preventDefault(); if (!rl.classList.contains('off')) location.replace(rl.getAttribute('href')); return; }
+  const sp = e.target.closest('[data-sport]');
+  if (sp) { curSport = sp.dataset.sport; store.set('sport', curSport); render(); return; }
   const lb = e.target.closest('[data-lang]');
   if (lb) {
     LANG = lb.dataset.lang;
