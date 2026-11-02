@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f4fd8">
+<script>try{var m=JSON.parse(localStorage.getItem("theme")||'"auto"');document.documentElement.dataset.theme=(m==="dark"||(m==="auto"&&matchMedia("(prefers-color-scheme: dark)").matches))?"dark":"light"}catch(e){}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -343,6 +344,12 @@ textarea{resize:vertical}
 .adminbadge{font-style:normal;font-size:9px;font-weight:800;background:#c0392b;color:#fff;border-radius:6px;padding:1px 5px;letter-spacing:.4px;vertical-align:1px}
 .postrow{padding:12px!important;gap:10px!important}.pbody{flex:1;min-width:0}.pbody b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pbody small{color:var(--muted);font-size:12px}
 .pcount{color:var(--muted);font-size:13px;white-space:nowrap}
+.catbar{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none}.catbar::-webkit-scrollbar{display:none}
+.catchip{flex:none;padding:7px 12px;border-radius:999px;background:var(--card);border:1px solid var(--line,rgba(128,128,128,.25));color:var(--text);font-size:13px;text-decoration:none;white-space:nowrap}
+.catcard{display:flex;align-items:center;gap:12px;padding:12px 14px;text-decoration:none;color:var(--text);border-top:1px solid var(--line,rgba(128,128,128,.18))}
+.catcard .caticon{font-size:24px;width:34px;text-align:center}.catcard .pbody b{white-space:normal}.catcard .pbody small{display:block;white-space:normal}
+.catcard .pcount{background:var(--card2);border-radius:999px;padding:2px 9px;font-size:12px}
+
 .ptext{white-space:pre-wrap;word-break:break-word}
 .chat{display:flex;flex-direction:column}
 .chatlog{height:min(52vh,430px);overflow-y:auto;background:var(--card);border-radius:14px;padding:4px 12px;border:1px solid var(--line);scroll-behavior:smooth}
@@ -376,8 +383,8 @@ body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 header{backdrop-filter:saturate(1.3) blur(8px);box-shadow:0 4px 18px rgba(15,79,216,.28)}
 .card{border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid rgba(224,233,249,.75);overflow:hidden}
 .card h2{letter-spacing:.2px}
-#app>*{animation:rise .32s cubic-bezier(.2,.7,.2,1) both}
-#app>*:nth-child(2){animation-delay:.04s}#app>*:nth-child(3){animation-delay:.08s}#app>*:nth-child(4){animation-delay:.12s}#app>*:nth-child(n+5){animation-delay:.16s}
+#app:not(.still)>*{animation:rise .32s cubic-bezier(.2,.7,.2,1) both}
+#app:not(.still)>*:nth-child(2){animation-delay:.04s}#app:not(.still)>*:nth-child(3){animation-delay:.08s}#app:not(.still)>*:nth-child(4){animation-delay:.12s}#app:not(.still)>*:nth-child(n+5){animation-delay:.16s}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .match,.lrow a,.tcell,.postrow,.rrow{transition:background .15s ease,transform .12s ease}
 .match:active,.lrow a:active,.tcell:active,.postrow:active{background:var(--card2);transform:scale(.995)}
@@ -392,7 +399,7 @@ nav#tabs a{transition:color .2s ease,transform .2s ease;position:relative}
 nav#tabs a.on{transform:translateY(-1px)}
 nav#tabs a.on::before{content:'';position:absolute;top:0;left:30%;right:30%;height:3px;border-radius:0 0 4px 4px;background:var(--grad)}
 .logo{transition:transform .2s ease}.match:active .logo{transform:scale(1.06)}
-.tl-row{transition:background .15s}.cmsg{animation:rise .25s ease both}
+.tl-row{transition:background .15s}
 .favstar,.pin{transition:transform .15s ease,color .15s ease}.favstar:active,.pin:active{transform:scale(1.25)}
 input,select,textarea{transition:border-color .15s ease,box-shadow .15s ease}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(22,103,242,.15)}
@@ -403,6 +410,50 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .card.skel h2{padding:14px}
 @keyframes shimmer{to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ---- chat as bubbles ---- */
+.chatlog{height:calc(100dvh - 330px);min-height:280px;overflow-y:auto;padding:10px 4px;display:flex;flex-direction:column;gap:8px;background:transparent;border:0;border-radius:0;scroll-behavior:auto}
+.bub{display:flex;gap:8px;align-items:flex-end;max-width:90%}
+.bub.mine{align-self:flex-end;flex-direction:row-reverse}
+.bubbody{background:var(--card);border:1px solid var(--line);border-radius:16px 16px 16px 4px;padding:7px 11px 5px;box-shadow:0 1px 2px rgba(15,40,100,.06);min-width:0}
+.bub.mine .bubbody{background:var(--grad);border:0;color:#fff;border-radius:16px 16px 4px 16px;box-shadow:0 3px 10px rgba(22,103,242,.25)}
+.bubhead{font-size:12px;display:flex;align-items:center;gap:4px;flex-wrap:wrap}.bubhead .cu{text-decoration:none;font-weight:700}
+.bubtext{font-size:14.5px;word-break:break-word;white-space:pre-wrap}
+.bubfoot{text-align:right;font-size:10.5px;opacity:.6;margin-top:1px}
+.bubact{display:none;flex-wrap:wrap;gap:5px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+.bub.open .bubact{display:flex}
+.bub.mine .bubact{border-top-color:rgba(255,255,255,.35)}.bub.mine .cbtn{color:#fff;border-color:rgba(255,255,255,.45)}
+.cbtn.txt{padding:4px 9px;height:auto;border-radius:999px}
+.av{display:inline-grid;place-items:center;border-radius:50%;color:#fff;font-weight:800;flex:none}
+.favlogo{width:15px;height:15px;object-fit:contain;vertical-align:-2px;margin-left:3px}
+a.cu{text-decoration:none;font-weight:700}
+.daysep{text-align:center;margin:6px 0 2px}.daysep span{display:inline-block;background:var(--card2);color:var(--muted);font-size:11px;font-weight:700;padding:3px 11px;border-radius:999px}
+.chatbar{position:sticky;bottom:calc(56px + env(safe-area-inset-bottom));z-index:3;padding:8px 0;margin:0;background:linear-gradient(to top,var(--bg) 72%,transparent)}
+.chatin{border-radius:999px;padding:12px 16px}
+.chatsend{border-radius:50%;width:46px;height:46px;box-shadow:0 4px 12px rgba(22,103,242,.3)}
+/* ---- profile ---- */
+.profhead{display:flex;gap:14px;align-items:center;padding:16px}
+.swatches{display:flex;gap:12px;flex-wrap:wrap;padding:14px}
+.swatch{width:36px;height:36px;border-radius:50%;border:3px solid transparent;box-shadow:0 0 0 1px var(--line);transition:transform .12s}
+.swatch.on{border-color:var(--text);transform:scale(1.1)}
+.favcur{display:flex;align-items:center;gap:10px}.favcur b{font-size:15px}.favcur .cbtn{margin-left:auto}
+button.tcell{background:var(--card);border:1px solid var(--line);border-radius:14px;color:inherit;font:inherit}
+.statrow{display:flex;text-align:center}.statrow div{flex:1;padding:14px}.statrow b{display:block;font-size:20px}.statrow small{color:var(--muted)}
+/* ---- race results ---- */
+.racetitle{display:block;font-weight:700;margin-bottom:2px}
+.results{margin:6px 0 0;padding:0;list-style:none;font-size:13px}.results li{display:flex;gap:8px;padding:2px 0}.results i{font-style:normal;width:20px;color:var(--muted);font-weight:700}.results small{margin-left:auto;color:var(--muted)}
+/* ---- dark mode ---- */
+html[data-theme="dark"]{color-scheme:dark;--bg:#0a1222;--card:#111c33;--card2:#172540;--line:#22324f;--text:#e8eefc;--muted:#93a6cb;--accent:#5b9bff;--shadow:0 1px 2px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.4)}
+html[data-theme="dark"] .card{border-color:rgba(60,85,130,.45)}
+html[data-theme="dark"] nav#tabs{background:rgba(17,28,51,.94);border-top-color:var(--line);box-shadow:0 -6px 20px rgba(0,0,0,.45)}
+html[data-theme="dark"] .ev-goal,html[data-theme="dark"] .tl-goal,html[data-theme="dark"] .pl.pin{background:#0f2a1b}
+html[data-theme="dark"] .ev-yellow{background:#2e2a0f}html[data-theme="dark"] .ev-red,html[data-theme="dark"] .pl.pout{background:#321417}
+html[data-theme="dark"] .ev-sub,html[data-theme="dark"] .tvtag{background:#12233f}html[data-theme="dark"] .ev-miss{background:#1f2430}
+html[data-theme="dark"] .tl-row+.tl-row{border-top-color:var(--line)}
+html[data-theme="dark"] .sk{background:linear-gradient(90deg,#18253f 25%,#22324f 50%,#18253f 75%);background-size:200% 100%}
+html[data-theme="dark"] .bubbody{box-shadow:none}
+html[data-theme="dark"] .favbtn.on{color:#111}
+html[data-theme="dark"] img.logo{background:transparent}
 </style>
 </head>
 <body>
@@ -420,7 +471,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
   <a href="#/forum" data-tab="forum">💬<span>Topluluk</span></a>
   <a href="#/settings" data-tab="settings">⚙️<span>Ayarlar</span></a>
 </nav>
-<script src="i18n.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="i18n.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

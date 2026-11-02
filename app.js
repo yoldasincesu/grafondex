@@ -175,25 +175,28 @@ const favStar = (id, name, league) => `<button class="favstar ${isFav(id, league
 const formHtml = form => form ? `<div class="form">${[...form].slice(-5).map(c => `<i class="${c}">${t('res.' + c)}</i>`).join('')}</div>` : '';
 
 // ---- sport switcher (Matches, Leagues, Favourites show one sport at a time) ----
-const SPORTS = [['soccer', '⚽', 'sp.soccer'], ['basketball', '🏀', 'sp.basketball'], ['eubasket', '🏀', 'sp.eubasket'], ['volley', '🏐', 'sp.volley'], ['tennis', '🎾', 'sp.tennis'], ['hockey', '🏒', 'sp.hockey'], ['football', '🏈', 'sp.football']];
+const SPORTS = [['soccer', '⚽', 'sp.soccer'], ['basketball', '🏀', 'sp.basketball'], ['volley', '🏐', 'sp.volley'], ['handball', '🤾', 'sp.handball'], ['baseball', '⚾', 'sp.baseball'], ['f1', '🏎️', 'sp.f1'], ['tennis', '🎾', 'sp.tennis'], ['hockey', '🏒', 'sp.hockey'], ['football', '🏈', 'sp.football']];
 // sports that come from the Cloudflare server in one common shape (tennis, EuroLeague + Turkish basketball, volleyball)
-const OTHER_SPORTS = ['tennis', 'eubasket', 'volley'];
+const OTHER_SPORTS = ['tennis', 'volley', 'handball', 'baseball', 'f1']; // basketball is one sport: NBA from ESPN, plus European leagues from the server (added below the NBA games)
 let curSport = store.get('sport', 'soccer');
 const sportBar = () => `<div class="sportbar">${SPORTS.map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${ic}</span>${t(k)}</button>`).join('')}</div>`;
 
 // ---- Matches tab ----
 const otherRow = it => {
+  if (it.kind === 'race') return `<div class="match static race"><div class="mtime ${it.state}">${it.state === 'in' ? '<span class="livedot"></span>' : ''}${esc(it.state === 'pre' ? hm(it.time) : (it.text || ''))}</div>
+    <div class="teams"><b class="racetitle">${esc(I18N['f1.' + it.code] ? t('f1.' + it.code) : it.title)}</b>${it.results.length ? `<ol class="results">${it.results.map(r => `<li><i>${esc(r.pos)}</i>${esc(r.name)}<small>${esc(r.team)}</small></li>`).join('')}</ol>` : ''}</div></div>`;
   const team = x => `<div class="tm ${it.state === 'post' && x.winner ? 'win' : ''}">${x.logo ? `<img class="logo" loading="lazy" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : '<span class="logo ph"></span>'}<span class="tn">${esc(x.name)}</span>
     <b class="ts ${it.state}">${x.sets?.length ? `<span class="setline">${x.sets.map(v => `<i>${esc(v)}</i>`).join('')}</span>` : ''}${esc(x.score)}</b></div>`;
   return `<div class="match static"><div class="mtime ${it.state}">${it.state === 'in' ? '<span class="livedot"></span>' : ''}${esc(it.state === 'pre' ? hm(it.time) : (it.text || ''))}${it.round ? `<small>${esc(it.round)}</small>` : ''}</div>
     <div class="teams">${team(it.home)}${team(it.away)}</div></div>`;
 };
-async function otherSportHtml(sport, day) {
+async function otherSportHtml(sport, day, extra = false) {
   const d = await capi('GET', `/sports/${sport}?date=${day}`);
   if (d.error) throw new Error(d.error);
   const cards = (d.groups || []).map(g => `<div class="card"><h2>${esc(g.name)}</h2>${g.items.map(otherRow).join('')}</div>`).join('');
-  const note = d.needKey ? `<p class="note">📌 ${t(cards ? 'c.needKeyNote' : 'c.needKey')}</p>` : '';
-  if (!cards) return note || (d.errors?.length ? `<div class="empty">${t('loadFail')}<br><small>${esc(d.errors[0])}</small></div>` : `<div class="empty">${t('noMatchesDay')}</div>`);
+  const limit = d.limit ? `<p class="note">⏳ ${t('c.limitNote')}</p>` : '';
+  const note = limit + (d.needKey ? `<p class="note">📌 ${t(cards ? 'c.needKeyNote' : 'c.needKey')}</p>` : '');
+  if (!cards) return note || (extra ? '' : d.errors?.length ? `<div class="empty">${t('loadFail')}<br><small>${esc(d.errors[0])}</small></div>` : `<div class="empty">${t('noMatchesDay')}</div>`);
   return cards + note;
 }
 
@@ -278,8 +281,9 @@ async function viewMatches(dateStr) {
     evs.sort(byDate);
     html += `<div class="card">${head(L)}${evs.map(e => matchRow(e, L.id, false, tvOf(e))).join('')}</div>`;
   }
-  if (!seen.size && !cupToday.length) html += `<div class="empty">${t('noMatchesDay')}<br><br><a href="#/settings" style="color:var(--accent)">${t('pickLeagues')}</a></div>`;
-  return html;
+  const extra = curSport === 'basketball' ? await otherSportHtml('eubasket', isoDay(d), true).catch(() => '') : '';
+  if (!seen.size && !cupToday.length && !extra.includes('class="card"')) html += `<div class="empty">${t('noMatchesDay')}<br><br><a href="#/settings" style="color:var(--accent)">${t('pickLeagues')}</a></div>`;
+  return html + extra;
 }
 
 // ---- Match page ----
@@ -863,14 +867,17 @@ async function viewTffMatch(id) {
     <div class="side">${logo(m.homeLogo)}<span>${esc(tffName(m.home))}</span></div>
     <div class="mid"><div class="sc">${played ? `${esc(m.homeScore)} - ${esc(m.awayScore)}` : (m.iso ? esc(hm(m.iso)) : '')}</div><div class="st ${played ? 'post' : 'pre'}">${played ? t('st.FT') : (m.iso ? dshort(m.iso) : '')}</div></div>
     <div class="side">${logo(m.awayLogo)}<span>${esc(tffName(m.away))}</span></div></div></div>`;
-  // TFF gives goal minutes; cards and substitutions come without minutes and go last
+  // goals, cards and substitutions all come with their minute ("MS" = after the final whistle)
+  const nm = x => typeof x === 'string' ? x : (x?.name || '');
+  const mn = x => { const v = typeof x === 'string' ? '' : (x?.minute || ''); return !v ? '' : /^\d/.test(v) ? v + "'" : v; };
   const items = [];
   for (const [side, ev] of [['home', m.homeEvents], ['away', m.awayEvents]]) {
-    for (const g of ev.goals) items.push({ side, kind: 'goal', name: esc(tffName(g.name)), min: g.minute ? g.minute + "'" : '' });
-    ev.in.forEach((p, k) => items.push({ side, kind: 'sub', name: esc(tffName(p)), out: esc(tffName(ev.out[k] || '')), min: '' }));
-    for (const c of ev.cards) items.push({ side, kind: 'yellow', name: esc(tffName(c)), min: '' });
+    for (const g of ev.goals) items.push({ side, kind: 'goal', name: esc(tffName(nm(g))), min: mn(g) });
+    ev.in.forEach((p, k) => items.push({ side, kind: 'sub', name: esc(tffName(nm(p))), out: esc(tffName(nm(ev.out[k]))), min: mn(p) }));
+    for (const c of ev.cards) items.push({ side, kind: c.red ? 'red' : 'yellow', name: esc(tffName(nm(c))), min: mn(c) });
   }
-  items.sort((a, b) => (parseInt(a.min) || 999) - (parseInt(b.min) || 999));
+  const minOf = v => /^MS/i.test(v) ? 999 : (parseInt(v) || 998) + (/\+(\d+)/.exec(v)?.[1] ? (+/\+(\d+)/.exec(v)[1]) / 100 : 0);
+  items.sort((a, b) => minOf(a.min) - minOf(b.min));
   const evHtml = items.length ? timelineHtml(items) : `<div class="empty">${played ? t('noEvents') : t('notStarted')}</div>`;
   const info = [
     ['📅', t('date'), m.iso ? new Date(m.iso).toLocaleString(LOCALE(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : m.date],
@@ -948,7 +955,7 @@ async function viewSettings() {
   setTitle(t('nav.settings'));
   const langCard = `<div class="card"><h2>${t('language')}</h2><div class="langs">${LANGS.map(([c, n]) =>
     `<button class="langbtn ${c === LANG ? 'on' : ''}" data-lang="${c}">${n}</button>`).join('')}</div></div>`;
-  return langCard + accountCard() + notifyCard() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
+  return langCard + themeCard() + accountCard() + notifyCard() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
     ${GROUPS.map((ls, g) => `<div class="card"><h2>${t('grp.' + g)}</h2>
     ${ls.map(L => `<label class="setrow">${lgIcon(L.id)}<span>${esc(lname(L))}</span><input type="checkbox" data-league-toggle="${L.id}" ${enabled.includes(L.id) ? 'checked' : ''}></label>`).join('')}</div>`).join('')}
     <div class="card about"><img src="logo.png" alt="Grafondex Live Score"><div class="note">${t('about')}</div></div>`;
@@ -979,7 +986,11 @@ const ago = ts => {
   if (d < 86400) return Math.floor(d / 3600) + ' ' + t('c.hour');
   return Math.floor(d / 86400) + ' ' + t('c.day');
 };
-const nameHtml = (n, role) => `<b class="cu ${role === 'admin' ? 'adm' : ''}">${esc(n)}${role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}</b>`;
+const AVATAR_COLORS = ['#1667f2', '#0ea5e9', '#16a34a', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#14b8a6']; // same list the server accepts
+const hashColor = n => AVATAR_COLORS[[...String(n)].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length];
+const avatar = (m, size = 30) => `<span class="av" style="width:${size}px;height:${size}px;font-size:${Math.round(size * .45)}px;background:${m.color || hashColor(m.username)}">${esc(String(m.username || '?')[0].toUpperCase())}</span>`;
+const favBadge = m => m.fav_id ? `<img class="favlogo" loading="lazy" src="${logoUrl(m.fav_id, m.fav_league)}" title="${esc(m.fav_name || '')}" alt="" onerror="this.style.display='none'">` : '';
+const nameHtml = m => `<a class="cu ${m.role === 'admin' ? 'adm' : ''}" href="#/user/${encodeURIComponent(m.username)}" style="color:${m.color || hashColor(m.username)}">${esc(m.username)}</a>${m.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}${favBadge(m)}`;
 
 function authForm() {
   return `<div class="card authcard"><h2>${t('c.loginTitle')}</h2><div class="form-block">
@@ -995,11 +1006,14 @@ function modCard() {
       <button data-mod="mute" data-min="0">${t('c.unmute')}</button><button data-mod="ban" class="danger">${t('c.ban')}</button><button data-mod="unban">${t('c.unban')}</button></div>
     <label>${t('c.words')}<input id="m-word" autocapitalize="off"></label>
     <div class="modbtns"><button data-mod="addword">${t('c.addWord')}</button><button data-mod="rmword">${t('c.rmWord')}</button></div>
+    <label>${t('c.newPass')}<input id="m-pass" type="password" autocomplete="new-password"></label>
+    <div class="modbtns"><button data-mod="resetpass">${t('c.resetPass')}</button></div>
     <div class="hint" id="m-msg"></div></div><div id="m-reports"></div></div>`;
 }
 const accountCard = () => acct
-  ? `<div class="card"><h2>👤 ${esc(acct.user.username)}${isAdminUser() ? ' <i class="adminbadge">ADMIN</i>' : ''}</h2>
-      <div class="form-block"><button class="btn ghost" data-auth="logout">${t('c.logout')}</button></div></div>${isAdminUser() ? modCard() : ''}`
+  ? `<div class="card"><div class="profhead">${avatar({ username: acct.user.username, color: acct.user.color }, 48)}<div><b style="font-size:16px">${esc(acct.user.username)}</b>${isAdminUser() ? ' <i class="adminbadge">ADMIN</i>' : ''}
+      ${acct.user.fav ? `<div class="hint">⭐ ${esc(acct.user.fav.name)}</div>` : ''}</div></div>
+      <div class="form-block"><a class="btn" href="#/profile" style="text-align:center">${t('c.myProfile')} ›</a><button class="btn ghost" data-auth="logout">${t('c.logout')}</button></div></div>${isAdminUser() ? modCard() : ''}`
   : authForm();
 async function loadReports() {
   const box = document.getElementById('m-reports');
@@ -1011,30 +1025,146 @@ async function loadReports() {
   } catch {}
 }
 
-// ---------- forum
-async function viewForum() {
-  setTitle(t('nav.forum'));
-  const { posts } = await capi('GET', '/posts');
-  const composer = acct
-    ? `<div class="card"><h2>✍️ ${t('c.newTopic')}</h2><div class="form-block">
-        <input id="p-title" maxlength="100" placeholder="${t('c.title')}"><textarea id="p-body" maxlength="2000" rows="4" placeholder="${t('c.text')}"></textarea>
-        <button class="btn" data-post-send>${t('c.post')}</button><div class="hint" id="p-msg"></div></div></div>`
-    : `<div class="card"><div class="form-block"><div class="hint">${t('c.needLogin')}</div><a class="btn" href="#/settings" style="text-align:center">${t('c.login')} ›</a></div></div>`;
-  const list = posts.length ? `<div class="card">${posts.map(p => `<a class="lrow postrow" href="#/post/${p.id}"><div class="pbody"><b>${esc(p.title)}</b>
-      <small>${nameHtml(p.username, p.role)} · ${ago(p.created)}</small></div><span class="pcount">💬 ${p.replies}</span></a>`).join('')}</div>` : `<div class="empty">${t('c.noPosts')}</div>`;
-  return composer + list;
+// ---------- profile: avatar colour, bio, favourite team (public page: #/user/NAME)
+async function viewProfile() {
+  setTitle(t('c.profile'));
+  if (!acct) return authForm();
+  try { acct.user = (await capi('GET', '/me')).user; store.set('acct', acct); } catch {}
+  const u = acct.user, me = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
+  const swatches = AVATAR_COLORS.map(c => `<button class="swatch ${c === (u.color || hashColor(u.username)) ? 'on' : ''}" style="background:${c}" data-color="${c}" aria-label="${c}"></button>`).join('');
+  const favNow = u.fav ? `<div class="favcur">${img(u.fav.id, 'mid', u.fav.league)}<a href="#/team/${esc(u.fav.league)}/${esc(u.fav.id)}"><b>${esc(u.fav.name)}</b></a><button class="cbtn txt" data-fav-clear>✕ ${t('c.remove')}</button></div>` : `<div class="hint">${t('c.noFavTeam')}</div>`;
+  const mine = favs.slice(0, 12).map(f => `<button class="tcell" data-pick-team data-id="${esc(f.id)}" data-name="${esc(f.name)}" data-league="${esc(f.league)}">${img(f.id, 'mid', f.league)}<span>${esc(f.name)}</span></button>`).join('');
+  const leagueOpts = LEAGUES.filter(L => L.table && !isTff(L.id)).map(L => `<option value="${L.id}">${esc(lname(L))}</option>`).join('');
+  return `<div class="card profhead">${avatar(me, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
+      <div><a href="#/user/${encodeURIComponent(u.username)}" style="color:var(--accent);font-size:13px">${t('c.publicView')} ›</a></div></div></div>
+    <div class="card"><h2>🎨 ${t('c.avatarColor')}</h2><div class="swatches">${swatches}</div></div>
+    <div class="card"><h2>📝 ${t('c.bio')}</h2><div class="form-block"><textarea id="pf-bio" maxlength="140" rows="3" placeholder="${t('c.bioPh')}">${esc(u.bio || '')}</textarea>
+      <button class="btn" data-profile-save>${t('c.save')}</button><div class="hint" id="pf-msg"></div></div></div>
+    <div class="card"><h2>⭐ ${t('c.favTeam')}</h2><div class="form-block">${favNow}
+      ${mine ? `<div class="hint">${t('c.fromFavs')}</div><div class="tgrid">${mine}</div>` : ''}
+      <div class="hint">${t('c.pickLeague')}</div><select class="picker" id="pf-league" style="margin:0"><option value="">—</option>${leagueOpts}</select><div id="pf-teams" class="tgrid"></div></div></div>
+    <div class="card"><h2>🔒 ${t('c.security')}</h2><div class="form-block">
+      <input id="pw-old" type="password" autocomplete="current-password" placeholder="${t('c.oldPass')}">
+      <input id="pw-new" type="password" autocomplete="new-password" placeholder="${t('c.newPass')}">
+      <button class="btn" data-pw-change>${t('c.changePass')}</button><div class="hint" id="pw-msg"></div>
+      <button class="btn ghost danger" data-acct-delete>${t('c.deleteAcct')}</button></div></div>
+    <div class="card"><div class="form-block"><button class="btn ghost" data-auth="logout">${t('c.logout')}</button></div></div>`;
 }
-const delBtn = (kind, id, owner) => (acct && (isAdminUser() || acct.user.username === owner)) ? `<button class="cbtn" data-cact="del" data-kind="${kind}" data-id="${id}" aria-label="${t('c.delete')}">🗑</button>` : '';
+async function viewUser(name) {
+  setTitle(name);
+  const { user: u } = await capi('GET', '/users/' + encodeURIComponent(name));
+  const m = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
+  const own = acct?.user?.username === u.username;
+  return `<div class="card profhead">${avatar(m, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
+      <div class="hint">${t('c.joined', fmtD(u.created * 1000, { day: 'numeric', month: 'long', year: 'numeric' }))}</div></div></div>
+    ${u.bio ? `<div class="card"><div class="form-block ptext">${esc(u.bio)}</div></div>` : ''}
+    ${u.fav ? `<div class="card"><h2>⭐ ${t('c.favTeam')}</h2><a class="lrow" href="#/team/${esc(u.fav.league)}/${esc(u.fav.id)}" style="padding:12px;gap:12px">${img(u.fav.id, 'mid', u.fav.league)}<b>${esc(u.fav.name)}</b></a></div>` : ''}
+    <div class="card"><div class="statrow"><div><b>${u.posts}</b><small>${t('c.topics')}</small></div><div><b>${u.messages}</b><small>${t('c.msgs')}</small></div></div></div>
+    ${own ? `<a class="btn" href="#/profile" style="display:block;text-align:center">${t('c.editProfile')}</a>` : ''}`;
+}
+
+document.addEventListener('click', async e => {
+  const ch = e.target.closest('[data-pw-change]'), dl = e.target.closest('[data-acct-delete]');
+  if (!ch && !dl) return;
+  const msg = document.getElementById('pw-msg'), oldEl = document.getElementById('pw-old'), newEl = document.getElementById('pw-new');
+  try {
+    if (ch) { await capi('POST', '/password', { old: oldEl.value, new: newEl.value }); msg.textContent = '✅ ' + t('c.passChanged'); oldEl.value = newEl.value = ''; }
+    else {
+      if (!oldEl.value) { msg.textContent = t('c.enterPass'); return; }
+      if (!confirm(t('c.confirmDelete'))) return;
+      await capi('POST', '/account/delete', { password: oldEl.value });
+      acct = null; store.set('acct', null); location.hash = '#/settings'; render();
+    }
+  } catch (err) { msg.textContent = '❌ ' + errText(err); }
+});
+
+// ---------- theme: automatic / light / dark
+let themeMode = store.get('theme', 'auto');
+const applyTheme = () => {
+  const dark = themeMode === 'dark' || (themeMode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+};
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => themeMode === 'auto' && applyTheme()); } catch {}
+applyTheme();
+const themeCard = () => `<div class="card"><h2>🎨 ${t('theme.title')}</h2><div class="langs">${['auto', 'light', 'dark'].map(m =>
+  `<button class="langbtn ${m === themeMode ? 'on' : ''}" data-theme-set="${m}">${t('theme.' + m)}</button>`).join('')}</div></div>`;
+
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'pf-league' || !e.target.value) return;
+  const league = e.target.value, box = document.getElementById('pf-teams');
+  box.innerHTML = '<div class="hint">…</div>';
+  const j = await get(`${apiSt(league)}/standings`, 300000).catch(() => null);
+  let ts = (j?.children || []).flatMap(g => g.standings?.entries || []).map(x => x.team);
+  ts = [...new Map(ts.map(x => [x.id, x])).values()].sort((a, b) => a.displayName.localeCompare(b.displayName, LOCALE()));
+  box.innerHTML = ts.length ? ts.map(tm => `<button class="tcell" data-pick-team data-id="${esc(tm.id)}" data-name="${esc(tm.displayName)}" data-league="${esc(league)}">${img(tm.id, 'mid', league)}<span>${esc(tm.displayName)}</span></button>`).join('') : `<div class="empty">${t('noTeams')}</div>`;
+});
+document.addEventListener('click', async e => {
+  const th = e.target.closest('[data-theme-set]');
+  if (th) { themeMode = th.dataset.themeSet; store.set('theme', themeMode); applyTheme(); render(true); return; }
+  const co = e.target.closest('[data-color]');
+  const pt = e.target.closest('[data-pick-team]');
+  const fc = e.target.closest('[data-fav-clear]');
+  const ps = e.target.closest('[data-profile-save]');
+  if (!co && !pt && !fc && !ps) return;
+  const msg = document.getElementById('pf-msg');
+  try {
+    let r;
+    if (co) r = await capi('POST', '/profile', { color: co.dataset.color });
+    else if (fc) r = await capi('POST', '/profile', { fav: null });
+    else if (ps) { r = await capi('POST', '/profile', { bio: document.getElementById('pf-bio').value }); if (msg) msg.textContent = '✅ ' + t('c.saved'); }
+    else {
+      const { id, name, league } = pt.dataset;
+      r = await capi('POST', '/profile', { fav: { id, name, league } });
+      // the profile team is also a favourite: it shows in Favourites and gets goal notifications
+      if (!isFav(id, league)) { favs = [...favs, { id, name, league }]; store.set('favs', favs); if (notif.url && notif.key) syncNotify().catch(() => {}); }
+    }
+    acct.user = r.user; store.set('acct', acct);
+    if (!ps) render(true);
+  } catch (err) { if (msg) msg.textContent = '❌ ' + errText(err); else alert(errText(err)); }
+});
+
+// ---------- forum
+const FORUM_CATS = [['genel', '💬'], ['superlig', '🇹🇷'], ['avrupa', '🌍'], ['transfer', '🔁'], ['tahmin', '🎯'], ['basket', '🏀'], ['tenis', '🎾'], ['f1', '🏎️'], ['diger', '🏐'], ['oneri', '🛠️']];
+const catName = k => t('cat.' + k);
+const catIcon = k => (FORUM_CATS.find(c => c[0] === k) || ['', '💬'])[1];
+const catChip = k => `<a class="catchip" href="#/forum/${k}">${catIcon(k)} ${esc(catName(k))}</a>`;
+const postRow = (p, showCat) => `<a class="lrow postrow" href="#/post/${p.id}"><div class="pbody"><b>${esc(p.title)}</b>
+  <small>${showCat ? `${catIcon(p.category)} ${esc(catName(p.category))} · ` : ''}${nameHtml(p)} · ${ago(p.last || p.created)}</small></div><span class="pcount">💬 ${p.replies}</span></a>`;
+const loginCard = () => `<div class="card"><div class="form-block"><div class="hint">${t('c.needLogin')}</div><a class="btn" href="#/settings" style="text-align:center">${t('c.login')} ›</a></div></div>`;
+async function viewForum(cat) {
+  setTitle(t('nav.forum'));
+  if (!FORUM_CATS.some(c => c[0] === cat)) return viewForumHome();
+  const { posts } = await capi('GET', '/posts?cat=' + cat);
+  const composer = acct
+    ? `<div class="card"><h2>✍️ ${t('c.newTopic')} · ${catIcon(cat)} ${esc(catName(cat))}</h2><div class="form-block">
+        <input id="p-title" maxlength="100" placeholder="${esc(t('cat.' + cat + '.ph'))}"><textarea id="p-body" maxlength="2000" rows="4" placeholder="${t('c.text')}"></textarea>
+        <button class="btn" data-post-send="${cat}">${t('c.post')}</button><div class="hint" id="p-msg"></div></div></div>`
+    : loginCard();
+  const list = posts.length ? `<div class="card">${posts.map(p => postRow(p, false)).join('')}</div>` : `<div class="empty">${t('c.noPosts')}</div>`;
+  return `<div class="catbar"><a class="catchip" href="#/forum">‹ ${t('cat.all')}</a>${FORUM_CATS.filter(c => c[0] !== cat).map(c => catChip(c[0])).join('')}</div>
+    <div class="card"><div class="form-block"><b style="font-size:17px">${catIcon(cat)} ${esc(catName(cat))}</b><div class="hint">${esc(t('cat.' + cat + '.d'))}</div></div></div>` + composer + list;
+}
+async function viewForumHome() {
+  const [{ cats }, { posts }] = await Promise.all([capi('GET', '/posts/cats'), capi('GET', '/posts')]);
+  const info = Object.fromEntries(cats.map(c => [c.category, c]));
+  const grid = FORUM_CATS.map(([k, ic]) => `<a class="catcard" href="#/forum/${k}"><span class="caticon">${ic}</span><div class="pbody"><b>${esc(catName(k))}</b><small>${esc(t('cat.' + k + '.d'))}</small></div>
+      <span class="pcount">${info[k] ? info[k].n : 0}</span></a>`).join('');
+  const recent = posts.length ? `<div class="card"><h2>🔥 ${t('cat.recent')}</h2>${posts.slice(0, 8).map(p => postRow(p, true)).join('')}</div>` : '';
+  return `<div class="card"><div class="form-block"><b style="font-size:17px">${t('cat.welcome')}</b><div class="hint">${t('cat.rules')}</div></div></div>
+    <div class="card"><h2>${t('cat.pick')}</h2>${grid}</div>` + recent;
+}
+const delBtn = (kind, id, owner) => (acct && (isAdminUser() || acct.user.username === owner)) ? `<button class="cbtn txt" data-cact="del" data-kind="${kind}" data-id="${id}" aria-label="${t('c.delete')}">🗑 ${t('c.delete')}</button>` : '';
 async function viewPost(id) {
   setTitle(t('nav.forum'));
   const { post, comments } = await capi('GET', '/posts/' + encodeURIComponent(id));
-  const cm = comments.map(c => `<div class="cmsg" data-id="${c.id}" data-user="${esc(c.username)}" data-kind="comment"><div class="cmeta">${nameHtml(c.username, c.role)}<small>${ago(c.created)}</small>
+  const cm = comments.map(c => `<div class="cmsg" data-id="${c.id}" data-user="${esc(c.username)}" data-kind="comment"><div class="cmeta">${nameHtml(c)}<small>${ago(c.created)}</small>
       <span class="cact">${delBtn('comment', c.id, c.username)}${modBtns(c.username, 'comment', c.id)}</span></div><div class="ctext">${esc(c.body)}</div></div>`).join('');
   const composer = acct
     ? `<div class="card"><div class="form-block"><textarea id="c-body" maxlength="1000" rows="3" placeholder="${t('c.writeComment')}"></textarea>
         <button class="btn" data-comment-send="${post.id}">${t('c.send')}</button><div class="hint" id="c-msg"></div></div></div>`
     : `<div class="card"><div class="form-block"><div class="hint">${t('c.needLogin')}</div><a class="btn" href="#/settings" style="text-align:center">${t('c.login')} ›</a></div></div>`;
-  return `<div class="card"><div class="form-block"><b style="font-size:17px">${esc(post.title)}</b><small class="hint">${nameHtml(post.username, post.role)} · ${ago(post.created)}</small>
+  return `<div class="catbar"><a class="catchip" href="#/forum/${esc(post.category || 'genel')}">‹ ${catIcon(post.category)} ${esc(catName(post.category || 'genel'))}</a></div>
+    <div class="card"><div class="form-block"><b style="font-size:17px">${esc(post.title)}</b><small class="hint">${nameHtml(post)} · ${ago(post.created)}</small>
     <div class="ptext">${esc(post.body)}</div><span class="cact">${delBtn('post', post.id, post.username)}${modBtns(post.username, 'post', post.id)}</span></div></div>
     <div class="card"><h2>${t('c.comments')} (${comments.length})</h2>${cm || `<div class="empty" style="padding:14px">${t('c.noComments')}</div>`}</div>` + composer;
 }
@@ -1043,18 +1173,29 @@ async function viewPost(id) {
 const modBtns = (user, kind, id) => {
   if (!acct) return '';
   const mine = acct.user.username === user;
-  const rep = !mine && !isAdminUser() ? `<button class="cbtn" data-cact="report" data-kind="${kind}" data-id="${id}" aria-label="${t('c.report')}">🚩</button>` : '';
-  const adm = isAdminUser() && !mine ? `<button class="cbtn txt" data-cact="mute" data-user="${esc(user)}" data-min="10">🔇10</button><button class="cbtn txt" data-cact="mute" data-user="${esc(user)}" data-min="60">🔇60</button><button class="cbtn txt" data-cact="mute" data-user="${esc(user)}" data-min="1440">🔇24h</button><button class="cbtn" data-cact="ban" data-user="${esc(user)}" aria-label="${t('c.ban')}">⛔</button>` : '';
+  const rep = !mine && !isAdminUser() ? `<button class="cbtn txt" data-cact="report" data-kind="${kind}" data-id="${id}" aria-label="${t('c.report')}">🚩 ${t('c.report')}</button>` : '';
+  const adm = isAdminUser() && !mine ? `<button class="cbtn txt" data-cact="mute" data-user="${esc(user)}" data-min="10">🔇 ${t('c.mute10')}</button><button class="cbtn txt" data-cact="mute" data-user="${esc(user)}" data-min="60">🔇 ${t('c.mute60')}</button><button class="cbtn txt" data-cact="mute" data-user="${esc(user)}" data-min="1440">🔇 ${t('c.mute1d')}</button><button class="cbtn txt" data-cact="ban" data-user="${esc(user)}" aria-label="${t('c.ban')}">⛔ ${t('c.ban')}</button>` : '';
   return rep + adm;
 };
 
 // ---------- match chat: everybody reads, only members write; polls every 3 s while the pane is on screen
-const chatMsg = m => `<div class="cmsg ${acct && m.username === acct.user.username ? 'mine' : ''}" data-id="${m.id}" data-user="${esc(m.username)}" data-kind="chat">
-  <div class="cmeta">${nameHtml(m.username, m.role)}<small>${ago(m.created)}</small><span class="cact">${delBtn('chat', m.id, m.username)}${modBtns(m.username, 'chat', m.id)}</span></div>
-  <div class="ctext">${esc(m.body)}</div></div>`;
+const clockOf = ts => new Date(ts * 1000).toLocaleTimeString(LOCALE(), { hour: '2-digit', minute: '2-digit' });
+const dayOfTs = ts => isoDay(new Date(ts * 1000));
+const daySep = ts => { const k = dayOfTs(ts); return `<div class="daysep"><span>${k === isoDay(new Date()) ? t('today') : k === isoDay(addDays(new Date(), -1)) ? t('yesterday') : fmtD(ts * 1000, { day: 'numeric', month: 'long' })}</span></div>`; };
+const chatMsg = m => {
+  const mine = acct && m.username === acct.user.username;
+  const acts = acct ? `${delBtn('chat', m.id, m.username)}${modBtns(m.username, 'chat', m.id)}` : '';
+  return `<div class="bub ${mine ? 'mine' : ''}" data-id="${m.id}" data-user="${esc(m.username)}" data-kind="chat">${mine ? '' : avatar(m, 30)}
+    <div class="bubbody">${mine ? '' : `<div class="bubhead">${nameHtml(m)}</div>`}<div class="bubtext">${esc(m.body)}</div><div class="bubfoot">${clockOf(m.created)}</div>${acts ? `<div class="bubact">${acts}</div>` : ''}</div></div>`;
+};
+function chatRows(msgs, prevDay) {
+  let html = '', last = prevDay;
+  for (const m of msgs) { const d = dayOfTs(m.created); if (d !== last) { html += daySep(m.created); last = d; } html += chatMsg(m); }
+  return { html, last };
+}
 function chatHtml(room) {
   const bar = acct
-    ? `<div class="chatbar"><input class="chatin" maxlength="300" placeholder="${t('c.chatPlaceholder')}" enterkeyhint="send"><button class="chatsend" aria-label="${t('c.send')}">➤</button></div><div class="hint chaterr"></div>`
+    ? `<div class="chatbar"><input class="chatin" maxlength="300" placeholder="${t('c.chatPlaceholder')}" enterkeyhint="send" autocomplete="off"><button class="chatsend" aria-label="${t('c.send')}">➤</button></div><div class="chaterr"></div>`
     : `<div class="chatbar login"><div class="hint">${t('c.chatNeedLogin')}</div><a class="btn" href="#/settings">${t('c.login')} ›</a></div>`;
   return `<div class="chat" data-room="${esc(room)}"><div class="chatlog"><div class="empty">…</div></div>${bar}</div>`;
 }
@@ -1066,23 +1207,64 @@ async function chatPoll(el, full) {
     const after = full ? 0 : +el.dataset.last || 0;
     const { messages } = await capi('GET', `/chat/${encodeURIComponent(el.dataset.room)}${after ? '?after=' + after : ''}`);
     const log = el.querySelector('.chatlog');
-    const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 60 || !el.dataset.last;
+    const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 80 || !el.dataset.last;
     if (after === 0) {
-      log.innerHTML = messages.length ? messages.map(chatMsg).join('') : `<div class="empty">${t('c.chatEmpty')}</div>`;
+      const sig = messages.map(m => m.id).join(',');
+      if (sig !== el.dataset.sig) { // rebuild only when something was added or deleted (keeps scroll position and open menus)
+        el.dataset.sig = sig;
+        const r = chatRows(messages, '');
+        log.innerHTML = messages.length ? r.html : `<div class="empty">${t('c.chatEmpty')}</div>`;
+        el.dataset.day = r.last;
+      }
       el.dataset.last = messages.length ? messages.at(-1).id : 0;
     } else if (messages.length) {
       log.querySelector('.empty')?.remove();
-      log.insertAdjacentHTML('beforeend', messages.map(chatMsg).join(''));
-      el.dataset.last = messages.at(-1).id;
+      const r = chatRows(messages, el.dataset.day || '');
+      log.insertAdjacentHTML('beforeend', r.html);
+      el.dataset.day = r.last; el.dataset.last = messages.at(-1).id;
+      el.dataset.sig = (el.dataset.sig ? el.dataset.sig + ',' : '') + messages.map(m => m.id).join(',');
     }
     if (atEnd) log.scrollTop = log.scrollHeight;
   } catch {}
   delete el.dataset.busy;
 }
+// ---- live connection: new messages and deletions arrive over a WebSocket; polling only fills in when it is not open
+const chatSockets = new Set();
+function chatPush(el, d) {
+  const log = el.querySelector('.chatlog');
+  if (d.t === 'msg' && d.m && d.m.id > (+el.dataset.last || 0)) {
+    const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    log.querySelector('.empty')?.remove();
+    const r = chatRows([d.m], el.dataset.day || '');
+    log.insertAdjacentHTML('beforeend', r.html);
+    el.dataset.day = r.last; el.dataset.last = d.m.id; el.dataset.sig = (el.dataset.sig ? el.dataset.sig + ',' : '') + d.m.id;
+    if (atEnd || (acct && d.m.username === acct.user.username)) log.scrollTop = log.scrollHeight;
+  } else if (d.t === 'del') {
+    log.querySelector(`.bub[data-id="${+d.id}"]`)?.remove();
+    el.dataset.sig = (el.dataset.sig || '').split(',').filter(x => x !== String(d.id)).join(',');
+  }
+}
+function chatConnect(el) {
+  if (el.__ws || !('WebSocket' in window)) return;
+  try {
+    const ws = new WebSocket(apiBase().replace(/^http/, 'ws') + `/chat/${encodeURIComponent(el.dataset.room)}/ws`);
+    el.__ws = ws; chatSockets.add(ws);
+    ws.onmessage = e => { if (e.data === 'pong') return; try { chatPush(el, JSON.parse(e.data)); } catch {} };
+    ws.onclose = () => { chatSockets.delete(ws); el.__ws = null; if (el.isConnected) setTimeout(() => el.isConnected && chatConnect(el), 4000); };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  } catch {}
+}
+setInterval(() => { for (const ws of chatSockets) if (ws.readyState === 1) ws.send('ping'); }, 25000); // keep-alive
 setInterval(() => {
   if (document.hidden) return;
   chatTick++;
-  for (const el of document.querySelectorAll('.chat[data-room]')) if (el.offsetParent) chatPoll(el, chatTick % 8 === 0); // every 8th poll reloads the whole list so deletions disappear
+  for (const el of document.querySelectorAll('.chat[data-room]')) {
+    if (!el.offsetParent) continue;
+    const live = el.__ws?.readyState === 1;
+    if (live && chatTick % 8 !== 0) continue; // the socket delivers; every 8th round still reloads the list so nothing is missed
+    chatPoll(el, chatTick % 8 === 0);
+  }
+  for (const ws of [...chatSockets]) if (![...document.querySelectorAll('.chat[data-room]')].some(el => el.__ws === ws)) { try { ws.close(); } catch {} } // left the page
 }, 3000);
 async function chatSend(el) {
   const input = el.querySelector('.chatin'), err = el.querySelector('.chaterr');
@@ -1104,7 +1286,7 @@ function keepChat(prev) {
   if (prev.focus) prev.node.querySelector('.chatin')?.focus();
 }
 const afterRender = () => {
-  document.querySelectorAll('.chat[data-room]:not([data-init])').forEach(el => { el.dataset.init = '1'; chatPoll(el, true); });
+  document.querySelectorAll('.chat[data-room]:not([data-init])').forEach(el => { el.dataset.init = '1'; chatPoll(el, true); chatConnect(el); });
   loadReports();
 };
 
@@ -1113,6 +1295,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.classList?.contains('chatin')) { e.preventDefault(); chatSend(e.target.closest('.chat')); }
 });
 document.addEventListener('click', async e => {
+  const bub = e.target.closest('.bub');
+  if (bub && !e.target.closest('a,button')) { document.querySelectorAll('.bub.open').forEach(x => x !== bub && x.classList.remove('open')); bub.classList.toggle('open'); return; }
   const send = e.target.closest('.chatsend');
   if (send) { chatSend(send.closest('.chat')); return; }
 
@@ -1133,7 +1317,7 @@ document.addEventListener('click', async e => {
   if (ps) {
     const msg = document.getElementById('p-msg');
     try {
-      const r = await capi('POST', '/posts', { title: document.getElementById('p-title').value, body: document.getElementById('p-body').value });
+      const r = await capi('POST', '/posts', { title: document.getElementById('p-title').value, body: document.getElementById('p-body').value, category: ps.dataset.postSend });
       location.hash = '#/post/' + r.id;
     } catch (err) { msg.textContent = '❌ ' + errText(err); }
     return;
@@ -1151,7 +1335,7 @@ document.addEventListener('click', async e => {
   if (ca) {
     const row = ca.closest('[data-id][data-user]'), id = +(ca.dataset.id || row?.dataset.id), user = ca.dataset.user || row?.dataset.user, kind = ca.dataset.kind || row?.dataset.kind;
     try {
-      if (ca.dataset.cact === 'del') { await capi('POST', '/delete', { kind, id }); row ? row.remove() : render(); if (kind === 'post') location.hash = '#/forum'; }
+      if (ca.dataset.cact === 'del') { await capi('POST', '/delete', { kind, id }); row ? row.remove() : render(); if (kind === 'post') history.back(); }
       else if (ca.dataset.cact === 'report') { await capi('POST', '/report', { kind, id }); ca.textContent = '✓'; ca.disabled = true; }
       else if (ca.dataset.cact === 'mute') { await capi('POST', '/mod/mute', { username: user, minutes: +ca.dataset.min }); ca.textContent = '✓'; }
       else if (ca.dataset.cact === 'ban') { if (confirm(t('c.confirmBan', user))) { await capi('POST', '/mod/ban', { username: user }); ca.textContent = '✓'; } }
@@ -1168,6 +1352,7 @@ document.addEventListener('click', async e => {
       if (m === 'mute') await capi('POST', '/mod/mute', { username: user, minutes: +mb.dataset.min });
       else if (m === 'ban') await capi('POST', '/mod/ban', { username: user });
       else if (m === 'unban') await capi('POST', '/mod/ban', { username: user, banned: false });
+      else if (m === 'resetpass') await capi('POST', '/mod/password', { username: user, password: document.getElementById('m-pass').value });
       else if (m === 'addword') await capi('POST', '/mod/words', { word });
       else if (m === 'rmword') await capi('POST', '/mod/words', { word, remove: true });
       else if (m === 'delitem') { await capi('POST', '/delete', { kind: mb.dataset.kind, id: +mb.dataset.id }); loadReports(); return; }
@@ -1179,7 +1364,7 @@ document.addEventListener('click', async e => {
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, forum: viewForum, post: viewPost,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, forum: viewForum, post: viewPost, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -1191,6 +1376,7 @@ function applyStatic() {
 }
 // soft placeholder cards while a page loads (instead of a bare spinner)
 const SKELETON = [0, 1].map(() => `<div class="card skel"><h2><i class="sk w40"></i></h2>${[0, 1, 2].map(() => '<div class="skrow"><i class="sk dot"></i><span><i class="sk w70"></i><i class="sk w50"></i></span></div>').join('')}</div>`).join('');
+let lastSig = '';
 let renderTok = 0, lastTab = 'matches', lastHash = null;
 async function render(silent = false) {
   const [r, ...args] = (location.hash.replace(/^#\/?/, '') || 'matches').split('/');
@@ -1198,8 +1384,9 @@ async function render(silent = false) {
   if (['matches', 'favs', 'leagues', 'settings'].includes(route)) lastTab = route;
   if (['league', 'table'].includes(route)) lastTab = 'leagues';
   if (['forum', 'post'].includes(route)) lastTab = 'forum';
+  if (['profile', 'user'].includes(route)) lastTab = 'settings';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post'].includes(route);
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'profile'].includes(route);
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   if (!silent) {
@@ -1211,6 +1398,10 @@ async function render(silent = false) {
   try {
     const html = await routes[route](...args);
     if (tok !== renderTok) return;
+    const sig = location.hash + html.replace(/ data-t="\d+"/g, '');
+    if (silent && sig === lastSig) return;
+    lastSig = sig;
+    app.classList.toggle('still', silent); // entrance animation only for real page changes, not for the 5-second refresh
     const y = scrollY;
     const prevChat = (() => { const n = document.querySelector('.chat[data-room]'); return n ? { node: n, focus: n.contains(document.activeElement) } : null; })();
     app.innerHTML = html;
