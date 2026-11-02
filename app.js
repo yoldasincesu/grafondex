@@ -827,6 +827,7 @@ if (!notif) {
   notif = { url: '', key: '', topic: 'grafondex-' + rnd, prefs: { goal: true, red: true, start: true, ht: false, end: true } };
   store.set('notify', notif);
 }
+const b64uBytes = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 async function callWorker(path, extra = {}) {
   const r = await fetch(notif.url.replace(/\/$/, '') + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -839,7 +840,7 @@ async function callWorker(path, extra = {}) {
 const syncNotify = () => callWorker('/sync', {
   // the notification server follows football only
   topic: notif.topic, prefs: notif.prefs, lang: LANG, teams: favs.filter(f => sportOf(f.league) === 'soccer').map(f => ({ id: f.id, name: f.name })),
-  app: location.href.split('#')[0],
+  app: location.href.split('#')[0], push: notif.push || null,
 });
 
 function notifyCard() {
@@ -850,6 +851,7 @@ function notifyCard() {
       <label>${t('topic')}<input id="n-topic" value="${esc(notif.topic)}"></label>
       <div class="hint">${t('ntfyHint')}</div>
     </div>
+    <div class="form-block"><button class="btn" id="n-push">${t('pushBtn')}</button><div class="hint">${t('pushHint')}</div></div>
     ${NPREFS.map(k => `<label class="setrow"><span>${t('np.' + k)}</span><input type="checkbox" data-nprefs="${k}" ${notif.prefs[k] ? 'checked' : ''}></label>`).join('')}
     <div class="form-block"><button class="btn" id="n-save">${t('saveTest')}</button><div class="hint" id="n-msg"></div></div>
   </div>`;
@@ -932,6 +934,24 @@ document.addEventListener('click', async e => {
     pinned = pinned.includes(id) ? pinned.filter(x => x !== id) : [...pinned, id];
     store.set('pinned', pinned);
     render(true);
+    return;
+  }
+  if (e.target.id === 'n-push') {
+    const msg = $('#n-msg');
+    notif.url = $('#n-url').value.trim();
+    notif.key = $('#n-key').value.trim();
+    if (!/^https:\/\//.test(notif.url) || !notif.key) { msg.textContent = t('needUrlKey'); return; }
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error(t('pushUnsupported'));
+      if (await Notification.requestPermission() !== 'granted') throw new Error(t('pushDenied'));
+      const reg = await navigator.serviceWorker.ready;
+      const { pub } = await callWorker('/vapid');
+      const old = await reg.pushManager.getSubscription();
+      if (old) await old.unsubscribe(); // the server key may differ from an earlier subscription
+      notif.push = (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(pub) })).toJSON();
+      store.set('notify', notif);
+      msg.textContent = t('pushOn');
+    } catch (err) { msg.textContent = '❌ ' + err.message; }
     return;
   }
   if (e.target.id === 'n-save') {

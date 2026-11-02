@@ -1,17 +1,27 @@
 {
+  "id": "./",
   "name": "Grafondex Live Score",
   "short_name": "Grafondex",
   "description": "Maçlar, favori takımlar, kadrolar ve puan durumu",
   "lang": "tr",
+  "dir": "ltr",
   "start_url": "./#/matches",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#0f4fd8",
+  "categories": ["sports", "news"],
+  "prefer_related_applications": false,
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Maçlar", "short_name": "Maçlar", "url": "./#/matches", "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Favoriler", "short_name": "Favoriler", "url": "./#/favs", "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Ligler", "short_name": "Ligler", "url": "./#/leagues", "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] }
   ]
 }
