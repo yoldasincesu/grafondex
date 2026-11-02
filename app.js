@@ -136,15 +136,15 @@ function sides(comp) {
   return [cs.find(x => x.homeAway === 'home') || cs[0], cs.find(x => x.homeAway === 'away') || cs[1]];
 }
 
-function matchRow(ev, league, withDate = false, tv = '') {
+function matchRow(ev, league, withDate = false, tv = '', tbd = false, hideLg = false) {
   const comp = ev.competitions[0];
   const [h, a] = sides(comp);
   const s = status(ev.status || comp.status, league);
   // score sits on the team's own line so long (wrapped) names stay aligned
   const team = c => `<div class="tm ${s.show && c.winner ? 'win' : ''}">${img(c.team.id, '', league)}<span class="tn">${esc(c.team.displayName || c.team.shortDisplayName)}${isFav(c.team.id, league) ? ' <span class="star">★</span>' : ''}</span><b class="ts ${s.cls}">${s.show ? esc(scoreOf(c)) : ''}</b></div>`;
-  const comp_ = withDate ? (LEAGUES.some(l => l.id === league) ? lname(leagueOf(league)) : (ev.league?.name || ev.league?.abbreviation)) : '';
+  const comp_ = withDate && !hideLg ? (LEAGUES.some(l => l.id === league) ? lname(leagueOf(league)) : (ev.league?.name || ev.league?.abbreviation)) : '';
   return `<a class="match" href="#/match/${league}/${ev.id}">
-    <div class="mtime ${s.cls}">${withDate ? `<small>${dshort(ev.date)}</small>` : ''}${s.cls === 'live' ? liveHtml(s) : esc(s.txt ?? hm(ev.date))}${tv ? `<small class="tv">📺 ${esc(tv.replace('beIN SPORTS ', 'beIN '))}</small>` : ''}</div>
+    <div class="mtime ${s.cls}">${withDate ? `<small>${tbd ? '' : dshort(ev.date)}</small>` : ''}${s.cls === 'live' ? liveHtml(s) : tbd ? '' : esc(s.txt ?? hm(ev.date))}${tv ? `<small class="tv">📺 ${esc(tv.replace('beIN SPORTS ', 'beIN '))}</small>` : ''}</div>
     <div class="teams">${comp_ ? `<div class="lg">${esc(comp_)}</div>` : ''}${team(h)}${team(a)}</div>
   </a>`;
 }
@@ -179,7 +179,8 @@ const SPORTS = [['soccer', '⚽', 'sp.soccer'], ['basketball', '🏀', 'sp.baske
 // sports that come from the Cloudflare server in one common shape (tennis, EuroLeague + Turkish basketball, volleyball)
 const OTHER_SPORTS = ['tennis', 'volley', 'handball', 'baseball', 'f1']; // basketball is one sport: NBA from ESPN, plus European leagues from the server (added below the NBA games)
 let curSport = store.get('sport', 'soccer');
-const sportBar = () => `<div class="sportbar">${SPORTS.map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${ic}</span>${t(k)}</button>`).join('')}</div>`;
+const scrollBar = inner => `<div class="sbwrap"><button class="sbarr l" data-sbar="-1" aria-label="‹">‹</button>${inner}<button class="sbarr r" data-sbar="1" aria-label="›">›</button></div>`;
+const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- Matches tab ----
 const otherRow = it => {
@@ -251,7 +252,7 @@ async function viewMatches(dateStr) {
     for (const [l, events] of Object.entries(grouped)) res.push({ status: 'fulfilled', value: { l, events } });
     if (allDays.every(r => r.status === 'rejected') && !res.some(r => r.status === 'fulfilled')) throw new Error(t('noConn'));
   }
-  const tvOf = ev => { const [h, a] = sides(ev.competitions[0]); return tvItems.length ? tvFor(tvItems, ev.date, h.team.displayName, a.team.displayName) : ''; };
+  const tvOf = (ev, lg) => { const [h, a] = sides(ev.competitions[0]); return tvFor(tvItems, ev.date, h.team.displayName, a.team.displayName, lg); };
   const cupToday = (ztk?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
   const byLeague = {}, seen = new Set(), favRows = [];
   for (const r of res) {
@@ -268,7 +269,7 @@ async function viewMatches(dateStr) {
   const byDate = (x, y) => new Date(x.date) - new Date(y.date);
   if (favRows.length) {
     favRows.sort((x, y) => byDate(x[0], y[0]));
-    html += `<div class="card"><h2>${t('myFavs')}</h2>${favRows.map(([e, l]) => matchRow(e, l, false, tvOf(e))).join('')}</div>`;
+    html += `<div class="card"><h2>${t('myFavs')}</h2>${favRows.map(([e, l]) => matchRow(e, l, false, tvOf(e, l))).join('')}</div>`;
   }
   const head = L => `<h2><a class="lglink" href="#/league/${L.id}">${lgIcon(L.id)}<span class="lgname">${esc(lname(L))}<small>${esc(regionName(L.id))}</small></span></a>${L.table ? `<a href="#/league/${L.id}/puan">${t('table')}</a>` : ''}</h2>`;
   for (const L of LEAGUES.filter(L => sportOf(L.id) === curSport)) {
@@ -279,7 +280,7 @@ async function viewMatches(dateStr) {
     const evs = byLeague[L.id];
     if (!evs) continue;
     evs.sort(byDate);
-    html += `<div class="card">${head(L)}${evs.map(e => matchRow(e, L.id, false, tvOf(e))).join('')}</div>`;
+    html += `<div class="card">${head(L)}${evs.map(e => matchRow(e, L.id, false, tvOf(e, L.id))).join('')}</div>`;
   }
   const extra = curSport === 'basketball' ? await otherSportHtml('eubasket', isoDay(d), true).catch(() => '') : '';
   if (!seen.size && !cupToday.length && !extra.includes('class="card"')) html += `<div class="empty">${t('noMatchesDay')}<br><br><a href="#/settings" style="color:var(--accent)">${t('pickLeagues')}</a></div>`;
@@ -350,7 +351,7 @@ async function viewMatch(league, id) {
 
   // match info: everything ESPN knows about the venue, crowd, officials and TV
   const gi = j.gameInfo || {};
-  const tvTr = tvFor(await tvList(trDay(comp.date)), comp.date, h.team.displayName, a.team.displayName);
+  const tvTr = tvFor(await tvList(trDay(comp.date)), comp.date, h.team.displayName, a.team.displayName, league);
   const tv = [...new Set([...(j.broadcasts || []), ...(comp.broadcasts || [])].map(b => b.media?.shortName || b.media?.name || b.names?.[0]).filter(Boolean))];
   const ref = (gi.officials || []).map(o => o.displayName || o.fullName).filter(Boolean);
   const infoRows = [
@@ -381,7 +382,7 @@ async function viewUsMatch(league, id) {
   const s = status(comp.status, league);
   const side = c => `<div class="side"><a href="#/team/${league}/${c.team.id}">${img(c.team.id, 'big', league)}<span>${esc(c.team.displayName)}</span></a>
     ${c.record?.[0]?.summary ? `<small class="rec">${esc(c.record[0].summary)}</small>` : ''}${favStar(c.team.id, c.team.displayName, league)}</div>`;
-  const tvTr = tvFor(await tvList(trDay(comp.date)), comp.date, h.team.displayName, a.team.displayName);
+  const tvTr = tvFor(await tvList(trDay(comp.date)), comp.date, h.team.displayName, a.team.displayName, league);
   let html = `<div class="card hero"><div class="row">${side(h)}
     <div class="mid"><div class="sc">${s.show ? `${esc(scoreOf(h))} - ${esc(scoreOf(a))}` : esc(hm(comp.date))}</div>
     <div class="st ${s.cls}">${s.cls === 'pre' ? dshort(comp.date) : s.cls === 'live' ? `<span class="livetag">${t('live')}</span> ${liveHtml(s)}` : esc(s.txt)}</div></div>
@@ -500,15 +501,56 @@ async function teamEvents(id, league, season) {
 }
 const leagueOfEvent = (e, fallback) => e.league?.slug || e.competitions?.[0]?.league?.slug || fallback;
 
+
+const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const posKey = x => { const p = (x.position?.abbreviation || x.position?.name || '')[0]; return ['G', 'D', 'M', 'F'].includes(p) ? p : 'O'; };
+const hsUrl = (sport, league, id) => `https://a.espncdn.com/i/headshots/${sport === 'soccer' ? 'soccer' : ['basketball', 'hockey', 'football', 'baseball'].includes(sport) ? league : sport}/players/full/${id}.png`;
+const pfavBtn = (p, cls = 'pstar') => `<button class="${cls} ${isPFav(p.id, p.sport) ? 'on' : ''}" data-pfav="${esc(p.id)}" data-name="${esc(p.name)}" data-psport="${esc(p.sport)}" data-league="${esc(p.league)}" data-team="${esc(p.team || '')}" aria-label="${t('pl.favs')}">${isPFav(p.id, p.sport) ? '★' : '☆'}</button>`;
+function playerCard(x, sub, sport = 'soccer', league = 'all', team = '') {
+  const src = x.headshot?.href || (sport === 'soccer' && x.id ? hsUrl('soccer', league, x.id) : '');
+  const pic = src ? `<img loading="lazy" src="${esc(src)}" alt="" onerror="this.remove()">` : '';
+  const card = `<a class="pcard p-${posKey(x)}" href="#/player/${esc(sport)}/${esc(league)}/${esc(x.id)}"><div class="pph"><span class="pin_">${esc(initials(x.displayName))}</span>${pic}${x.jersey ? `<i class="pno">${esc(x.jersey)}</i>` : ''}</div>
+    <b class="pnm">${esc(x.displayName)}</b><small>${esc(sub)}</small></a>`;
+  return `<div class="pcwrap">${card}${pfavBtn({ id: x.id, name: x.displayName, sport, league, team })}</div>`;
+}
+const pgrid = list => `<div class="pgrid">${list.join('')}</div>`;
+
 // NBA rosters are one flat list; NHL/NFL come grouped ("Centers", "offense", …)
-function usRosterHtml(roster) {
+function usRosterHtml(roster, league) {
   const ath = roster?.athletes || [];
   const groups = ath[0]?.items ? ath.filter(g => g.items?.length).map(g => [g.position, g.items]) : [['', ath]];
-  const pl = x => `<div class="pl"><span class="no">${esc(x.jersey ?? '')}</span><span class="nm">${esc(x.displayName)}</span>
-    <span class="ps">${esc(x.position?.abbreviation || '')}${x.age ? ' · ' + t('age', x.age) : ''}</span></div>`;
+  const pl = x => playerCard(x, [x.position?.abbreviation, x.age ? t('age', x.age) : ''].filter(Boolean).join(' · '), sportOf(league), league, roster?.team?.displayName || '');
   const label = s => String(s || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
-  const html = groups.map(([g, list]) => `<div class="card">${g ? `<h2>${esc(label(g))} (${list.length})</h2>` : ''}${[...list].sort((x, y) => (+x.jersey || 999) - (+y.jersey || 999)).map(pl).join('')}</div>`).join('');
+  const html = groups.map(([g, list]) => `<div class="card">${g ? `<h2>${esc(label(g))} (${list.length})</h2>` : ''}${pgrid([...list].sort((x, y) => (+x.jersey || 999) - (+y.jersey || 999)).map(pl))}</div>`).join('');
   return html || `<div class="empty">${t('noSquad')}</div>`;
+}
+
+
+const rightsOrEmpty = (e, league) => { const [h, a] = sides(e.competitions[0]); return rightsTv(leagueOfEvent(e, league), h.team.displayName, a.team.displayName); };
+// a game's competition: domestic league, European cup, domestic cup or other (friendlies …)
+function compInfo(e, league) {
+  const slug = leagueOfEvent(e, league) || '';
+  const own = LEAGUES.find(l => l.id === slug);
+  const raw = own ? lname(leagueOf(slug)) : (e.league?.name || e.league?.abbreviation || '');
+  let kind = 'other';
+  if (/^uefa\./.test(slug) || /champions|europa|conference|uefa/i.test(raw)) kind = 'europe';
+  else if (/cup|kupa|copa|coupe|pokal|coppa|trophy|super/i.test(raw + ' ' + slug)) kind = 'cup';
+  else if (own && own.table !== false && !/^tff/.test(slug)) kind = 'league';
+  else if (own) kind = 'cup';
+  return { slug, name: raw || t('fx.other'), kind };
+}
+const FX_KINDS = [['league', '🏟️', 'fx.league'], ['europe', '🌍', 'fx.europe'], ['cup', '🏆', 'fx.cup'], ['other', '🤝', 'fx.other']];
+// games whose date is not fixed yet are kept but shown without a date
+const dateTbd = e => { const c = e.competitions?.[0]; return c?.timeValid === false || /tbd|tba|postponed|ertelen/i.test((e.status || c?.status)?.type?.detail || '') || /postponed/i.test((e.status || c?.status)?.type?.name || ''); };
+function fixtureGroups(list, league, cap) {
+  const by = {};
+  for (const e of list.slice(0, cap)) { const ci = compInfo(e, league); (by[ci.kind + '|' + ci.name] ||= { ...ci, items: [] }).items.push(e); }
+  const order = k => FX_KINDS.findIndex(x => x[0] === k);
+  return Object.values(by).sort((a, b) => order(a.kind) - order(b.kind) || b.items.length - a.items.length).map(g => {
+    const ic = FX_KINDS[order(g.kind)][1];
+    const rows = g.items.map(e => matchRow(e, leagueOfEvent(e, league), true, rightsOrEmpty(e, league), dateTbd(e), true)).join('');
+    return `<div class="card"><h2>${ic} ${esc(g.name)} <span class="cnt">${g.items.length}</span></h2>${rows}</div>`;
+  }).join('');
 }
 
 async function viewTeam(league, id, season) {
@@ -537,24 +579,26 @@ async function viewTeam(league, id, season) {
 
   const rows = (list, withDate) => list.map(e => matchRow(e, leagueOfEvent(e, league), withDate)).join('');
   const seasonBar = sportOf(league) === 'soccer' ? `<div class="seasonbar">${seasonSelect(`data-team-season="${league}/${id}"`, season)}</div>` : '';
+  const sec = (title, inner) => inner ? `<div class="fxsec">${title}</div>${inner}` : '';
+  const nextSorted = [...evs.next].sort((x, y) => (dateTbd(x) - dateTbd(y)) || (new Date(x.date) - new Date(y.date)));
   const fxBody = (evs.live.length ? `<div class="card"><h2>${t('live')}</h2>${rows(evs.live, true)}</div>` : '')
-    + (evs.past.length ? `<div class="card"><h2>${pastSeason ? t('season', seasonLabel(season)) + ' · ' + evs.past.length : t('recentMatches')}</h2>${rows(evs.past.slice(0, pastSeason ? 120 : 15), true)}</div>` : '')
-    + (evs.next.length ? `<div class="card"><h2>${t('upcoming')}</h2>${rows(evs.next.slice(0, 10), true)}</div>` : '')
+    + (!pastSeason ? sec(t('upcoming'), fixtureGroups(nextSorted, league, 40)) : '')
+    + sec(pastSeason ? t('season', seasonLabel(season)) + ' · ' + evs.past.length : t('recentMatches'), fixtureGroups(evs.past, league, pastSeason ? 150 : 30))
     || `<div class="empty">${t('noMatches')}</div>`;
   const fx = seasonBar + fxBody;
 
-  if (sportOf(league) !== 'soccer') return html + seg('team', [t('fixtures'), t('squad')]) + pane('team', 0, fx) + pane('team', 1, usRosterHtml(roster));
+  if (sportOf(league) !== 'soccer') return html + seg('team', [t('fixtures'), t('squad')]) + pane('team', 0, fx) + pane('team', 1, usRosterHtml(roster, league));
   const POS = [['Goalkeeper', 'pos.G'], ['Defender', 'pos.D'], ['Midfielder', 'pos.M'], ['Forward', 'pos.F']];
   const ath = roster?.athletes || [];
-  const pl = x => `<div class="pl"><span class="no">${esc(x.jersey ?? '')}</span><span class="nm">${esc(x.displayName)}</span>
-    <span class="ps">${x.age ? t('age', x.age) : ''}${x.citizenship ? ' · ' + esc(x.citizenship) : ''}</span></div>`;
+  const pl = x => playerCard(x, [x.age ? t('age', x.age) : '', x.citizenship || ''].filter(Boolean).join(' · '), 'soccer', league, name);
   const byNo = (x, y) => (+x.jersey || 99) - (+y.jersey || 99);
   let sq = POS.map(([k, label]) => {
     const g = ath.filter(x => x.position?.name === k).sort(byNo);
-    return g.length ? `<div class="card"><h2>${t(label)} (${g.length})</h2>${g.map(pl).join('')}</div>` : '';
+    return g.length ? `<div class="card"><h2>${t(label)} (${g.length})</h2>${pgrid(g.map(pl))}</div>` : '';
   }).join('');
   const other = ath.filter(x => !POS.some(([k]) => k === x.position?.name));
-  if (other.length) sq += `<div class="card"><h2>${t('other')}</h2>${other.map(pl).join('')}</div>`;
+  if (other.length) sq += `<div class="card"><h2>${t('other')}</h2>${pgrid(other.map(pl))}</div>`;
+  if (ath.length) sq = `<div class="sqhead"><b>${ath.length}</b> ${t('sq.players')}</div>` + sq;
   if (!sq) sq = `<div class="empty">${t('noSquad')}</div>`;
 
   // profile: competitions the club plays in (from its schedule) and the head coach
@@ -566,13 +610,100 @@ async function viewTeam(league, id, season) {
   return html + seg(k, [t('fixtures'), t('squad'), t('info')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, infoPane);
 }
 
+
+// ---- Players: profile page, favourites, search (ESPN athlete + search endpoints) ----
+const ESPN_C = 'https://site.web.api.espn.com/apis/common/v3/sports/';
+const ESPN_Q = 'https://site.web.api.espn.com/apis/search/v2?';
+let pfavs = store.get('pfavs', []); // [{id, name, sport, league, team}]
+const isPFav = (id, sport) => pfavs.some(f => f.id == id && f.sport === sport);
+const TAB_OF = { racing: 'f1', volleyball: 'volley' };
+const tabOfSport = sp => TAB_OF[sp] || sp;
+const sportIcon = sp => (SPORTS.find(x => x[0] === tabOfSport(sp)) || [0, '🏅'])[1];
+const dobOf = a => a.displayDOB || '';
+async function viewPlayer(sport, league, id) {
+  let a, o = null;
+  try {
+    const j = await get(`${ESPN_C}${sport}/${league}/athletes/${id}`, 300000); a = j.athlete;
+    var lg = j.league?.slug;
+  } catch { return `<div class="empty">${t('pl.noData')}</div>`; }
+  if (!a) return `<div class="empty">${t('pl.noData')}</div>`;
+  o = await get(`${ESPN_C}${sport}/${league}/athletes/${id}/overview`, 300000).catch(() => null);
+  setTitle(a.displayName || a.fullName);
+  const team = a.team, teamLeague = sport === 'soccer' ? (lg || league) : league;
+  const teamOk = team && (sport === 'soccer' || LEAGUES.some(l => l.id === teamLeague));
+  const src = a.headshot?.href || hsUrl(sport, league, id);
+  const pos = a.position?.displayName || a.position?.name || '';
+  const p = { id, name: a.displayName || a.fullName, sport, league, team: team?.displayName || '' };
+  const flag = a.flag?.href ? `<img class="flag" src="${esc(a.flag.href)}" alt="" onerror="this.remove()">` : '';
+  const hero = `<div class="card hero plhero"><div class="plpic"><span class="pin_">${esc(initials(p.name))}</span><img src="${esc(src)}" alt="" onerror="this.remove()"></div>
+    <div style="font-size:21px;font-weight:700;margin-top:8px">${esc(p.name)}</div>
+    <div class="st">${[a.displayJersey, pos].filter(Boolean).map(esc).join(' · ')}</div>
+    ${team ? `<div class="plteam">${teamOk ? `<a href="#/team/${esc(teamLeague)}/${esc(team.id)}">${img(team.id, '', teamLeague)} ${esc(team.displayName)}</a>` : esc(team.displayName)}</div>` : ''}
+    <button class="favbtn ${isPFav(id, sport) ? 'on' : ''}" data-pfav="${esc(id)}" data-name="${esc(p.name)}" data-psport="${esc(sport)}" data-league="${esc(league)}" data-team="${esc(p.team)}">${isPFav(id, sport) ? t('pl.inFav') : t('pl.addFav')}</button></div>`;
+  const rows = [['pl.age', a.age ? t('age', a.age) : ''], ['pl.born', dobOf(a)], ['pl.birthplace', a.displayBirthPlace], ['pl.nation', [a.citizenship].filter(Boolean).join('')],
+    ['pl.height', a.displayHeight], ['pl.weight', a.displayWeight], ['pl.exp', a.displayExperience], ['pl.draft', a.displayDraft], ['pl.hand', a.hand?.displayValue]].filter(r => r[1]);
+  const info = rows.length ? `<div class="card">${rows.map(([k, v]) => `<div class="inforow"><span class="k">${t(k)}</span><span class="v">${k === 'pl.nation' ? flag : ''}${esc(v)}</span></div>`).join('')}</div>` : '';
+  const ss = a.statsSummary?.statistics || [];
+  const tiles = ss.length ? `<div class="card"><h2>${t('pl.current')} · ${esc(a.statsSummary.displayName || '')}</h2><div class="stiles">${ss.map(x => `<div class="stile"><b>${esc(x.displayValue ?? '')}</b><small>${esc(x.shortDisplayName || x.displayName || '')}</small></div>`).join('')}</div></div>` : '';
+  const st = o?.statistics, labels = st?.labels || [];
+  const table = labels.length && st.splits?.length ? `<div class="card"><h2>${t('pl.seasonStats')}</h2><div class="stwrap"><table class="stbl"><thead><tr><th></th>${labels.map(l => `<th>${esc(l)}</th>`).join('')}</tr></thead>
+    <tbody>${st.splits.map(sp => `<tr><td>${esc(sp.displayName)}</td>${sp.stats.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : '';
+  const ev = o?.nextGame?.league?.events?.[0];
+  const next = ev ? `<div class="card"><h2>${t('pl.next')}</h2><div class="inforow"><span class="k">${esc(dshort(ev.date))} · ${esc(hm(ev.date))}</span><span class="v">${esc(ev.name || ev.shortName || '')}</span></div></div>` : '';
+  return hero + tiles + table + next + info + (!tiles && !table ? `<div class="empty">${t('pl.noStats')}</div>` : '');
+}
+async function favPlayers(list) {
+  const rows = await Promise.all(list.map(async f => {
+    const j = await get(`${ESPN_C}${f.sport}/${f.league}/athletes/${f.id}`, 300000).catch(() => null);
+    return { f, a: j?.athlete };
+  }));
+  return `<div class="card"><h2>⭐ ${t('pl.favs')}</h2><div class="favpl">${rows.map(({ f, a }) => {
+    const ss = (a?.statsSummary?.statistics || []).slice(0, 4).map(x => `<span><b>${esc(x.displayValue)}</b> ${esc(x.shortDisplayName || x.displayName)}</span>`).join('');
+    return `<div class="pcwrap row"><a class="favplrow" href="#/player/${esc(f.sport)}/${esc(f.league)}/${esc(f.id)}"><span class="pph sm"><span class="pin_">${esc(initials(f.name))}</span><img src="${esc(a?.headshot?.href || hsUrl(f.sport, f.league, f.id))}" alt="" onerror="this.remove()"></span>
+      <div class="pbody"><b>${esc(f.name)}</b><small>${esc(a?.team?.displayName || f.team || '')}${a?.position?.abbreviation ? ' · ' + esc(a.position.abbreviation) : ''}</small><div class="ssline">${ss}</div></div></a>${pfavBtn(f)}</div>`;
+  }).join('')}</div></div>`;
+}
+let searchTimer = 0, searchTok = 0;
+const uidId = (uid, k) => (String(uid || '').match(new RegExp('~' + k + ':(\\d+)')) || [])[1];
+async function runSearch(q) {
+  const box = document.getElementById('sres'); if (!box) return;
+  q = q.trim();
+  if (q.length < 2) { box.innerHTML = `<div class="empty">${t('search.hint')}</div>`; return; }
+  const tok = ++searchTok;
+  box.innerHTML = '<div class="spin"></div>';
+  const call = type => get(`${ESPN_Q}query=${encodeURIComponent(q)}&limit=12&type=${type}`, 120000).then(j => (j.results || []).find(r => r.type === type)?.contents || []).catch(() => []);
+  const [teams, players] = await Promise.all([call('team'), call('player')]);
+  if (tok !== searchTok) return;
+  const row = (c, kind) => {
+    const id = uidId(c.uid, kind === 'player' ? 'a' : 't'); if (!id) return '';
+    const sport = c.sport || 'soccer', lg = c.defaultLeagueSlug || c.league || (sport === 'soccer' ? 'all' : '');
+    const sub = [c.subtitle, c.description].filter(Boolean).join(' · ');
+    const ok = kind === 'player' || sport === 'soccer' || LEAGUES.some(l => l.id === lg);
+    const href = kind === 'player' ? `#/player/${esc(sport)}/${esc(lg || sport)}/${esc(id)}` : `#/team/${esc(lg)}/${esc(id)}`;
+    const pic = c.image?.default ? `<img class="${kind === 'team' ? 'logo' : 'srcpic'}" loading="lazy" src="${esc(c.image.default)}" alt="" onerror="this.style.visibility='hidden'">` : `<span class="srcpic">${sportIcon(sport)}</span>`;
+    const inner = `${pic}<span class="nm">${esc(c.displayName)}<small class="hint" style="display:block">${sportIcon(sport)} ${esc(sub)}</small></span>${ok ? '<span class="go">›</span>' : ''}`;
+    return ok ? `<div class="lrow"><a href="${href}">${inner}</a></div>` : `<div class="lrow"><span class="srow">${inner}</span></div>`;
+  };
+  const sec = (title, list, kind) => list.length ? `<div class="card"><h2>${title} (${list.length})</h2>${list.map(c => row(c, kind)).join('')}</div>` : '';
+  box.innerHTML = sec(t('search.teams'), teams, 'team') + sec(t('search.players'), players, 'player') || `<div class="empty">${t('search.none')}</div>`;
+}
+async function viewSearch() {
+  setTitle(t('search.title'));
+  return `<div class="card"><div class="form-block"><input id="sq" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('search.ph'))}"></div></div><div id="sres"><div class="empty">${t('search.hint')}</div></div>`;
+}
+document.addEventListener('input', e => {
+  if (e.target.id !== 'sq') return;
+  clearTimeout(searchTimer); const v = e.target.value; searchTimer = setTimeout(() => runSearch(v), 300);
+});
+
 // ---- Favourites ----
 async function viewFavs() {
   setTitle(t('nav.favs'));
-  if (OTHER_SPORTS.includes(curSport)) return sportBar() + `<div class="empty">${t('c.otherNote')}</div>`;
-  const mineF = favs.filter(f => sportOf(f.league) === curSport);
-  if (!mineF.length) return sportBar() + `<div class="empty">${t('noFavs')}</div>`;
-  return sportBar() + await favCards(mineF);
+  const other = OTHER_SPORTS.includes(curSport);
+  const mineF = other ? [] : favs.filter(f => sportOf(f.league) === curSport);
+  const mineP = pfavs.filter(f => tabOfSport(f.sport) === curSport);
+  const html = (mineF.length ? await favCards(mineF) : '') + (mineP.length ? await favPlayers(mineP) : '');
+  return sportBar() + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`);
 }
 async function favCards(list) {
   const all = await Promise.all(list.map(f => teamEvents(f.id, f.league).then(e => ({ f, e })).catch(() => ({ f, e: { past: [], live: [], next: [] } }))));
@@ -902,7 +1033,18 @@ async function tvList(day) {
   if (!workerBase()) return [];
   try { return (await get(`${workerBase()}/tv?date=${day}`, 1800000)).items || []; } catch { return []; }
 }
-function tvFor(items, iso, home, away) {
+
+// who holds the Turkish rights of a competition (2026-27): used when no channel listing matches the game
+const TR_CLUB = /galatasaray|fenerbah|be[sş]ikta[sş]|trabzonspor|ba[sş]ak[sş]ehir|samsunspor|konyaspor|sivasspor|kas[ıi]mpa[sş]a|alanyaspor|antalyaspor|gaziantep|g[oö]ztepe|rizespor|kayserispor|e[uü]pspor|hatayspor|bodrum|[sş]anl[ıi]urfa|kocaelispor|gen[cç]lerbirli|ankarag[uü]c[uü]|karag[uü]mr[uü]k|eyupspor/i;
+function rightsTv(league, home, away) {
+  const l = String(league || '');
+  if (/^uefa\.(champions|europa|europa\.conf)$/.test(l)) return TR_CLUB.test(home) || TR_CLUB.test(away) ? 'TRT 1 / tabii' : 'tabii Spor';
+  if (/^(esp|ita|ger|ned|por|sco|sau)\.1$/.test(l)) return 'S Sport';
+  if (/^(eng|fra|tur)\.1$|^tur\.2$/.test(l)) return 'beIN SPORTS';
+  if (/^tff|^tur\.(cup|super)|^uefa\.nations/.test(l)) return 'A Spor / atv';
+  return '';
+}
+function tvFor(items, iso, home, away, league) {
   const [h, mi] = trClock(iso).split(':').map(Number), k = h * 60 + mi;
   const hit = items.find(it => {
     const [a, b] = it.time.split(':').map(Number);
@@ -910,7 +1052,7 @@ function tvFor(items, iso, home, away) {
     const [x, y] = it.name.split(' - ');
     return (sameTeam(home, x) && sameTeam(away, y)) || (sameTeam(home, y) && sameTeam(away, x));
   });
-  return hit?.ch || '';
+  return hit?.ch || rightsTv(league, home, away);
 }
 
 // ---- Notifications (Cloudflare Worker + ntfy) ----
@@ -953,9 +1095,9 @@ function notifyCard() {
 
 async function viewSettings() {
   setTitle(t('nav.settings'));
-  const langCard = `<div class="card"><h2>${t('language')}</h2><div class="langs">${LANGS.map(([c, n]) =>
+  const langCard = `<div class="card"><button class="langcur" data-lang-toggle aria-expanded="false"><span>🌐 ${t('language')}</span><b>${esc(LANGS[LANG_IDX()][1])} ▾</b></button><div class="langs" hidden>${LANGS.map(([c, n]) =>
     `<button class="langbtn ${c === LANG ? 'on' : ''}" data-lang="${c}">${n}</button>`).join('')}</div></div>`;
-  return langCard + themeCard() + accountCard() + notifyCard() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
+  return langCard + themeCard() + `<div class="card"><div class="form-block"><div class="hint">${t('c.accountMoved')}</div><a class="btn" href="#/profile" style="text-align:center">👤 ${t('c.profile')} ›</a></div></div>` + (isAdminUser() ? modCard() : '') + notifyCard() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
     ${GROUPS.map((ls, g) => `<div class="card"><h2>${t('grp.' + g)}</h2>
     ${ls.map(L => `<label class="setrow">${lgIcon(L.id)}<span>${esc(lname(L))}</span><input type="checkbox" data-league-toggle="${L.id}" ${enabled.includes(L.id) ? 'checked' : ''}></label>`).join('')}</div>`).join('')}
     <div class="card about"><img src="logo.png" alt="Grafondex Live Score"><div class="note">${t('about')}</div></div>`;
@@ -975,6 +1117,7 @@ async function capi(method, path, body) {
   return j;
 }
 const errText = e => {
+  if (e.code === 'slow_down' && e.data?.wait) return t('c.err.slow_wait', e.data.wait);
   if (e.code === 'muted' && e.data?.until) return t('c.err.muted', new Date(e.data.until * 1000).toLocaleTimeString(LOCALE(), { hour: '2-digit', minute: '2-digit' }));
   return I18N['c.err.' + e.code] ? t('c.err.' + e.code) : (e.code && e.code !== 'Failed to fetch' ? e.code : t('c.err.network'));
 };
@@ -1028,14 +1171,14 @@ async function loadReports() {
 // ---------- profile: avatar colour, bio, favourite team (public page: #/user/NAME)
 async function viewProfile() {
   setTitle(t('c.profile'));
-  if (!acct) return authForm();
+  if (!acct) return communityNav('profile') + authForm();
   try { acct.user = (await capi('GET', '/me')).user; store.set('acct', acct); } catch {}
   const u = acct.user, me = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
   const swatches = AVATAR_COLORS.map(c => `<button class="swatch ${c === (u.color || hashColor(u.username)) ? 'on' : ''}" style="background:${c}" data-color="${c}" aria-label="${c}"></button>`).join('');
   const favNow = u.fav ? `<div class="favcur">${img(u.fav.id, 'mid', u.fav.league)}<a href="#/team/${esc(u.fav.league)}/${esc(u.fav.id)}"><b>${esc(u.fav.name)}</b></a><button class="cbtn txt" data-fav-clear>✕ ${t('c.remove')}</button></div>` : `<div class="hint">${t('c.noFavTeam')}</div>`;
   const mine = favs.slice(0, 12).map(f => `<button class="tcell" data-pick-team data-id="${esc(f.id)}" data-name="${esc(f.name)}" data-league="${esc(f.league)}">${img(f.id, 'mid', f.league)}<span>${esc(f.name)}</span></button>`).join('');
   const leagueOpts = LEAGUES.filter(L => L.table && !isTff(L.id)).map(L => `<option value="${L.id}">${esc(lname(L))}</option>`).join('');
-  return `<div class="card profhead">${avatar(me, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
+  return communityNav('profile') + `<div class="card profhead">${avatar(me, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
       <div><a href="#/user/${encodeURIComponent(u.username)}" style="color:var(--accent);font-size:13px">${t('c.publicView')} ›</a></div></div></div>
     <div class="card"><h2>🎨 ${t('c.avatarColor')}</h2><div class="swatches">${swatches}</div></div>
     <div class="card"><h2>📝 ${t('c.bio')}</h2><div class="form-block"><textarea id="pf-bio" maxlength="140" rows="3" placeholder="${t('c.bioPh')}">${esc(u.bio || '')}</textarea>
@@ -1124,48 +1267,54 @@ document.addEventListener('click', async e => {
 });
 
 // ---------- forum
+const communityNav = active => `<div class="seg"><a data-replace href="#/forum" class="${active === 'forum' ? 'on' : ''}">💬 ${t('cat.topics')}</a><a data-replace href="#/profile" class="${active === 'profile' ? 'on' : ''}">👤 ${t('c.profile')}${acct ? '' : ''}</a></div>`;
 const FORUM_CATS = [['genel', '💬'], ['superlig', '🇹🇷'], ['avrupa', '🌍'], ['transfer', '🔁'], ['tahmin', '🎯'], ['basket', '🏀'], ['tenis', '🎾'], ['f1', '🏎️'], ['diger', '🏐'], ['oneri', '🛠️']];
 const catName = k => t('cat.' + k);
 const catIcon = k => (FORUM_CATS.find(c => c[0] === k) || ['', '💬'])[1];
 const catChip = k => `<a class="catchip" href="#/forum/${k}">${catIcon(k)} ${esc(catName(k))}</a>`;
-const postRow = (p, showCat) => `<a class="lrow postrow" href="#/post/${p.id}"><div class="pbody"><b>${esc(p.title)}</b>
-  <small>${showCat ? `${catIcon(p.category)} ${esc(catName(p.category))} · ` : ''}${nameHtml(p)} · ${ago(p.last || p.created)}</small></div><span class="pcount">💬 ${p.replies}</span></a>`;
-const loginCard = () => `<div class="card"><div class="form-block"><div class="hint">${t('c.needLogin')}</div><a class="btn" href="#/settings" style="text-align:center">${t('c.login')} ›</a></div></div>`;
+const postRow = (p, showCat) => `<div class="lrow postrow" data-href="#/post/${p.id}"><div class="pbody"><a class="ptitle" href="#/post/${p.id}"><b>${esc(p.title)}</b></a>
+  <small>${showCat ? `${catIcon(p.category)} ${esc(catName(p.category))} · ` : ''}${nameHtml(p)} · ${ago(p.last || p.created)}</small></div><a class="pcount" href="#/post/${p.id}">💬 ${p.replies}</a></div>`;
+const loginCard = () => `<div class="card"><div class="form-block"><div class="hint">${t('c.needLogin')}</div><a class="btn" href="#/profile" style="text-align:center">${t('c.login')} ›</a></div></div>`;
 async function viewForum(cat) {
   setTitle(t('nav.forum'));
   if (!FORUM_CATS.some(c => c[0] === cat)) return viewForumHome();
-  const { posts } = await capi('GET', '/posts?cat=' + cat);
+  let posts;
+  try { posts = (await capi('GET', '/posts?cat=' + cat)).posts; } catch (e) { return communityNav('forum') + `<div class="empty">⚠️ ${esc(errText(e))}<br><button class="btn" data-retry style="margin-top:12px">${t('refresh')}</button></div>`; }
   const composer = acct
     ? `<div class="card"><h2>✍️ ${t('c.newTopic')} · ${catIcon(cat)} ${esc(catName(cat))}</h2><div class="form-block">
         <input id="p-title" maxlength="100" placeholder="${esc(t('cat.' + cat + '.ph'))}"><textarea id="p-body" maxlength="2000" rows="4" placeholder="${t('c.text')}"></textarea>
         <button class="btn" data-post-send="${cat}">${t('c.post')}</button><div class="hint" id="p-msg"></div></div></div>`
     : loginCard();
   const list = posts.length ? `<div class="card">${posts.map(p => postRow(p, false)).join('')}</div>` : `<div class="empty">${t('c.noPosts')}</div>`;
-  return `<div class="catbar"><a class="catchip" href="#/forum">‹ ${t('cat.all')}</a>${FORUM_CATS.filter(c => c[0] !== cat).map(c => catChip(c[0])).join('')}</div>
+  return communityNav('forum') + scrollBar(`<div class="catbar"><a class="catchip" href="#/forum">‹ ${t('cat.all')}</a>${FORUM_CATS.filter(c => c[0] !== cat).map(c => catChip(c[0])).join('')}</div>`) + `
     <div class="card"><div class="form-block"><b style="font-size:17px">${catIcon(cat)} ${esc(catName(cat))}</b><div class="hint">${esc(t('cat.' + cat + '.d'))}</div></div></div>` + composer + list;
 }
 async function viewForumHome() {
-  const [{ cats }, { posts }] = await Promise.all([capi('GET', '/posts/cats'), capi('GET', '/posts')]);
+  // an older Worker has no /posts/cats: the page must still open
+  const [cr, pr] = await Promise.allSettled([capi('GET', '/posts/cats'), capi('GET', '/posts')]);
+  if (pr.status === 'rejected') return communityNav('forum') + `<div class="empty">⚠️ ${esc(errText(pr.reason))}<br><button class="btn" data-retry style="margin-top:12px">${t('refresh')}</button></div>`;
+  const posts = pr.value.posts, cats = cr.status === 'fulfilled' ? cr.value.cats : [];
   const info = Object.fromEntries(cats.map(c => [c.category, c]));
   const grid = FORUM_CATS.map(([k, ic]) => `<a class="catcard" href="#/forum/${k}"><span class="caticon">${ic}</span><div class="pbody"><b>${esc(catName(k))}</b><small>${esc(t('cat.' + k + '.d'))}</small></div>
       <span class="pcount">${info[k] ? info[k].n : 0}</span></a>`).join('');
   const recent = posts.length ? `<div class="card"><h2>🔥 ${t('cat.recent')}</h2>${posts.slice(0, 8).map(p => postRow(p, true)).join('')}</div>` : '';
-  return `<div class="card"><div class="form-block"><b style="font-size:17px">${t('cat.welcome')}</b><div class="hint">${t('cat.rules')}</div></div></div>
+  return communityNav('forum') + `<div class="card"><div class="form-block"><b style="font-size:17px">${t('cat.welcome')}</b><div class="hint">${t('cat.rules')}</div></div></div>
     <div class="card"><h2>${t('cat.pick')}</h2>${grid}</div>` + recent;
 }
+const likeBtn = (kind, m) => `<button class="cbtn txt like ${m.liked ? 'on' : ''}" data-cact="like" data-kind="${kind}" data-id="${m.id}" aria-label="${t('c.like')}">${m.liked ? '♥' : '♡'} <span>${m.likes || 0}</span></button>`;
 const delBtn = (kind, id, owner) => (acct && (isAdminUser() || acct.user.username === owner)) ? `<button class="cbtn txt" data-cact="del" data-kind="${kind}" data-id="${id}" aria-label="${t('c.delete')}">🗑 ${t('c.delete')}</button>` : '';
 async function viewPost(id) {
   setTitle(t('nav.forum'));
   const { post, comments } = await capi('GET', '/posts/' + encodeURIComponent(id));
   const cm = comments.map(c => `<div class="cmsg" data-id="${c.id}" data-user="${esc(c.username)}" data-kind="comment"><div class="cmeta">${nameHtml(c)}<small>${ago(c.created)}</small>
-      <span class="cact">${delBtn('comment', c.id, c.username)}${modBtns(c.username, 'comment', c.id)}</span></div><div class="ctext">${esc(c.body)}</div></div>`).join('');
+      <span class="cact">${likeBtn('comment', c)}${delBtn('comment', c.id, c.username)}${modBtns(c.username, 'comment', c.id)}</span></div><div class="ctext">${esc(c.body)}</div></div>`).join('');
   const composer = acct
     ? `<div class="card"><div class="form-block"><textarea id="c-body" maxlength="1000" rows="3" placeholder="${t('c.writeComment')}"></textarea>
         <button class="btn" data-comment-send="${post.id}">${t('c.send')}</button><div class="hint" id="c-msg"></div></div></div>`
     : `<div class="card"><div class="form-block"><div class="hint">${t('c.needLogin')}</div><a class="btn" href="#/settings" style="text-align:center">${t('c.login')} ›</a></div></div>`;
   return `<div class="catbar"><a class="catchip" href="#/forum/${esc(post.category || 'genel')}">‹ ${catIcon(post.category)} ${esc(catName(post.category || 'genel'))}</a></div>
     <div class="card"><div class="form-block"><b style="font-size:17px">${esc(post.title)}</b><small class="hint">${nameHtml(post)} · ${ago(post.created)}</small>
-    <div class="ptext">${esc(post.body)}</div><span class="cact">${delBtn('post', post.id, post.username)}${modBtns(post.username, 'post', post.id)}</span></div></div>
+    <div class="ptext">${esc(post.body)}</div><span class="cact">${likeBtn('post', post)}${delBtn('post', post.id, post.username)}${modBtns(post.username, 'post', post.id)}</span></div></div>
     <div class="card"><h2>${t('c.comments')} (${comments.length})</h2>${cm || `<div class="empty" style="padding:14px">${t('c.noComments')}</div>`}</div>` + composer;
 }
 
@@ -1186,7 +1335,7 @@ const chatMsg = m => {
   const mine = acct && m.username === acct.user.username;
   const acts = acct ? `${delBtn('chat', m.id, m.username)}${modBtns(m.username, 'chat', m.id)}` : '';
   return `<div class="bub ${mine ? 'mine' : ''}" data-id="${m.id}" data-user="${esc(m.username)}" data-kind="chat">${mine ? '' : avatar(m, 30)}
-    <div class="bubbody">${mine ? '' : `<div class="bubhead">${nameHtml(m)}</div>`}<div class="bubtext">${esc(m.body)}</div><div class="bubfoot">${clockOf(m.created)}</div>${acts ? `<div class="bubact">${acts}</div>` : ''}</div></div>`;
+    <div class="bubbody">${mine ? '' : `<div class="bubhead">${nameHtml(m)}</div>`}<div class="bubtext">${esc(m.body)}</div><div class="bubfoot">${clockOf(m.created)}${likeBtn('chat', m)}</div>${acts ? `<div class="bubact">${acts}</div>` : ''}</div></div>`;
 };
 function chatRows(msgs, prevDay) {
   let html = '', last = prevDay;
@@ -1196,7 +1345,7 @@ function chatRows(msgs, prevDay) {
 function chatHtml(room) {
   const bar = acct
     ? `<div class="chatbar"><input class="chatin" maxlength="300" placeholder="${t('c.chatPlaceholder')}" enterkeyhint="send" autocomplete="off"><button class="chatsend" aria-label="${t('c.send')}">➤</button></div><div class="chaterr"></div>`
-    : `<div class="chatbar login"><div class="hint">${t('c.chatNeedLogin')}</div><a class="btn" href="#/settings">${t('c.login')} ›</a></div>`;
+    : `<div class="chatbar login"><div class="hint">${t('c.chatNeedLogin')}</div><a class="btn" href="#/profile">${t('c.login')} ›</a></div>`;
   return `<div class="chat" data-room="${esc(room)}"><div class="chatlog"><div class="empty">…</div></div>${bar}</div>`;
 }
 let chatTick = 0;
@@ -1266,16 +1415,33 @@ setInterval(() => {
   }
   for (const ws of [...chatSockets]) if (![...document.querySelectorAll('.chat[data-room]')].some(el => el.__ws === ws)) { try { ws.close(); } catch {} } // left the page
 }, 3000);
+let chatNext = 0, chatTimer = 0;
+function chatCooldown(sec) {
+  chatNext = Date.now() + sec * 1000; clearInterval(chatTimer);
+  const tick = () => {
+    const left = Math.ceil((chatNext - Date.now()) / 1000);
+    document.querySelectorAll('.chat .chaterr').forEach(x => { x.textContent = left > 0 ? '⏳ ' + t('c.chatWait', left) : ''; });
+    document.querySelectorAll('.chatsend').forEach(x => { x.disabled = left > 0; });
+    if (left <= 0) clearInterval(chatTimer);
+  };
+  tick(); chatTimer = setInterval(tick, 1000);
+}
 async function chatSend(el) {
   const input = el.querySelector('.chatin'), err = el.querySelector('.chaterr');
   const body = input.value.trim();
   if (!body) return;
   err.textContent = '';
+  const left = Math.ceil((chatNext - Date.now()) / 1000);
+  if (left > 0 && !isAdminUser()) { err.textContent = '⏳ ' + t('c.err.slow_wait', left); return; }
   try {
     await capi('POST', `/chat/${encodeURIComponent(el.dataset.room)}`, { body });
     input.value = '';
+    if (!isAdminUser()) chatCooldown(60);
     chatPoll(el);
-  } catch (e) { err.textContent = '⚠️ ' + errText(e); }
+  } catch (e) {
+    if (e.code === 'slow_down' && e.data?.wait) chatCooldown(e.data.wait);
+    err.textContent = '⚠️ ' + errText(e);
+  }
 }
 // the chat box survives the automatic page refreshes of a live match (typed text, scroll position)
 function keepChat(prev) {
@@ -1285,7 +1451,19 @@ function keepChat(prev) {
   ph.replaceWith(prev.node);
   if (prev.focus) prev.node.querySelector('.chatin')?.focus();
 }
+// arrows only where there is more to scroll
+const updArrows = bar => { const w = bar.parentElement; if (!w?.classList.contains('sbwrap')) return; w.classList.toggle('cl', bar.scrollLeft > 4); w.classList.toggle('cr', bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 4); };
+document.addEventListener('scroll', e => { if (e.target.matches?.('.sportbar, .catbar')) updArrows(e.target); }, true);
+addEventListener('resize', () => document.querySelectorAll('.sportbar, .catbar').forEach(updArrows));
+// mouse wheel scrolls the chip bars sideways
+document.addEventListener('wheel', e => {
+  const bar = e.target.closest?.('.sportbar, .catbar, .chips, .datebar');
+  if (bar && Math.abs(e.deltaY) > Math.abs(e.deltaX) && bar.scrollWidth > bar.clientWidth) { bar.scrollLeft += e.deltaY; e.preventDefault(); }
+}, { passive: false });
 const afterRender = () => {
+  const sq = document.getElementById('sq'); if (sq && !sq.value) sq.focus();
+  const on = document.querySelector('.sportbar button.on'); if (on) { const bar = on.parentElement; bar.scrollLeft = Math.max(0, on.offsetLeft - bar.clientWidth / 2 + on.offsetWidth / 2); }
+  document.querySelectorAll('.sportbar, .catbar').forEach(updArrows);
   document.querySelectorAll('.chat[data-room]:not([data-init])').forEach(el => { el.dataset.init = '1'; chatPoll(el, true); chatConnect(el); });
   loadReports();
 };
@@ -1335,7 +1513,11 @@ document.addEventListener('click', async e => {
   if (ca) {
     const row = ca.closest('[data-id][data-user]'), id = +(ca.dataset.id || row?.dataset.id), user = ca.dataset.user || row?.dataset.user, kind = ca.dataset.kind || row?.dataset.kind;
     try {
-      if (ca.dataset.cact === 'del') { await capi('POST', '/delete', { kind, id }); row ? row.remove() : render(); if (kind === 'post') history.back(); }
+      if (ca.dataset.cact === 'like') {
+        if (!acct) { alert(t('c.needLogin')); return; }
+        const r = await capi('POST', '/like', { kind, id });
+        ca.classList.toggle('on', r.liked); ca.innerHTML = `${r.liked ? '♥' : '♡'} <span>${r.n}</span>`;
+      } else if (ca.dataset.cact === 'del') { await capi('POST', '/delete', { kind, id }); row ? row.remove() : render(); if (kind === 'post') history.back(); }
       else if (ca.dataset.cact === 'report') { await capi('POST', '/report', { kind, id }); ca.textContent = '✓'; ca.disabled = true; }
       else if (ca.dataset.cact === 'mute') { await capi('POST', '/mod/mute', { username: user, minutes: +ca.dataset.min }); ca.textContent = '✓'; }
       else if (ca.dataset.cact === 'ban') { if (confirm(t('c.confirmBan', user))) { await capi('POST', '/mod/ban', { username: user }); ca.textContent = '✓'; } }
@@ -1364,7 +1546,7 @@ document.addEventListener('click', async e => {
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, forum: viewForum, post: viewPost, profile: viewProfile, user: viewUser,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -1373,6 +1555,7 @@ function applyStatic() {
   for (const a of document.querySelectorAll('#tabs a')) a.querySelector('span').textContent = t('nav.' + a.dataset.tab);
   $('#back').setAttribute('aria-label', t('back'));
   $('#refresh').setAttribute('aria-label', t('refresh'));
+  $('#searchbtn').setAttribute('aria-label', t('search.title'));
 }
 // soft placeholder cards while a page loads (instead of a bare spinner)
 const SKELETON = [0, 1].map(() => `<div class="card skel"><h2><i class="sk w40"></i></h2>${[0, 1, 2].map(() => '<div class="skrow"><i class="sk dot"></i><span><i class="sk w70"></i><i class="sk w50"></i></span></div>').join('')}</div>`).join('');
@@ -1383,10 +1566,9 @@ async function render(silent = false) {
   const route = routes[r] ? r : 'matches';
   if (['matches', 'favs', 'leagues', 'settings'].includes(route)) lastTab = route;
   if (['league', 'table'].includes(route)) lastTab = 'leagues';
-  if (['forum', 'post'].includes(route)) lastTab = 'forum';
-  if (['profile', 'user'].includes(route)) lastTab = 'settings';
+  if (['forum', 'post', 'profile', 'user'].includes(route)) lastTab = 'forum';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'profile'].includes(route);
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'search'].includes(route);
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   if (!silent) {
@@ -1419,12 +1601,20 @@ async function render(silent = false) {
 addEventListener('hashchange', () => render());
 $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/matches'));
 $('#refresh').onclick = () => { cache.clear(); render(); };
+$('#searchbtn').onclick = () => { location.hash = '#/search'; };
 document.addEventListener('click', async e => {
   // tabs and round arrows inside a league page don't pile up in history
   const rl = e.target.closest('a[data-replace]');
   if (rl) { e.preventDefault(); if (!rl.classList.contains('off')) location.replace(rl.getAttribute('href')); return; }
   const sp = e.target.closest('[data-sport]');
   if (sp) { curSport = sp.dataset.sport; store.set('sport', curSport); render(); return; }
+  const prow = e.target.closest('.postrow[data-href]');
+  if (prow && !e.target.closest('a')) { location.hash = prow.dataset.href; return; }
+  const sbr = e.target.closest('[data-sbar]');
+  if (sbr) { const bar = sbr.parentElement.querySelector('.sportbar, .catbar'); bar?.scrollBy({ left: +sbr.dataset.sbar * Math.max(160, bar.clientWidth * .7), behavior: 'smooth' }); return; }
+  if (e.target.closest('[data-retry]')) { render(); return; }
+  const lt = e.target.closest('[data-lang-toggle]');
+  if (lt) { const box = lt.parentElement.querySelector('.langs'); box.hidden = !box.hidden; lt.setAttribute('aria-expanded', String(!box.hidden)); return; }
   const lb = e.target.closest('[data-lang]');
   if (lb) {
     LANG = lb.dataset.lang;
@@ -1483,6 +1673,19 @@ document.addEventListener('click', async e => {
     segState[key] = i;
     box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === sb));
     document.querySelectorAll(`[data-pane^="${key}:"]`).forEach(p => p.classList.toggle('on', p.dataset.pane === `${key}:${i}`));
+    return;
+  }
+  const pf = e.target.closest('[data-pfav]');
+  if (pf) {
+    e.preventDefault(); e.stopPropagation();
+    const d = pf.dataset, was = isPFav(d.pfav, d.psport);
+    pfavs = was ? pfavs.filter(f => !(f.id == d.pfav && f.sport === d.psport)) : [...pfavs, { id: d.pfav, name: d.name, sport: d.psport, league: d.league, team: d.team }];
+    store.set('pfavs', pfavs);
+    document.querySelectorAll(`[data-pfav="${CSS.escape(d.pfav)}"][data-psport="${CSS.escape(d.psport)}"]`).forEach(b => {
+      b.classList.toggle('on', !was);
+      b.textContent = b.classList.contains('favbtn') ? (was ? t('pl.addFav') : t('pl.inFav')) : (was ? '☆' : '★');
+    });
+    if (location.hash.startsWith('#/favs')) render(true);
     return;
   }
   const fb = e.target.closest('[data-fav]');

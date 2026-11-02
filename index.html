@@ -343,7 +343,45 @@ textarea{resize:vertical}
 .authbtns{display:flex;gap:8px}.authbtns .btn{flex:1}
 .adminbadge{font-style:normal;font-size:9px;font-weight:800;background:#c0392b;color:#fff;border-radius:6px;padding:1px 5px;letter-spacing:.4px;vertical-align:1px}
 .postrow{padding:12px!important;gap:10px!important}.pbody{flex:1;min-width:0}.pbody b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pbody small{color:var(--muted);font-size:12px}
-.pcount{color:var(--muted);font-size:13px;white-space:nowrap}
+.ptitle{display:block;color:inherit;text-decoration:none}.postrow[data-href]{cursor:pointer}
+.pcount{color:var(--muted);text-decoration:none;font-size:13px;white-space:nowrap}
+
+.sbwrap{position:relative}.sbwrap .sportbar,.sbwrap .catbar{scroll-behavior:smooth}
+.sbarr{position:absolute;top:0;bottom:8px;width:30px;z-index:2;border:0;font-size:20px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.sbarr.l{left:0;background:linear-gradient(90deg,var(--bg) 40%,transparent)}.sbarr.r{right:0;background:linear-gradient(270deg,var(--bg) 40%,transparent)}
+.sbarr{display:none}.sbwrap.cl .sbarr.l,.sbwrap.cr .sbarr.r{display:flex}
+@media (hover:none){.sbwrap .sbarr{display:none!important}}
+.langcur{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:none;border:0;color:var(--text);font-size:15px}
+.langcur b{color:var(--accent);font-weight:600}.langs[hidden]{display:none}
+.like{color:var(--muted)}.like.on{color:#ef4444}.bubfoot .like{padding:0 0 0 8px;font-size:12px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;padding:12px}
+.pcard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;padding:10px 6px;border-radius:14px;background:var(--card2);border:1px solid var(--line);border-top:3px solid var(--muted)}
+.pcard.p-G{border-top-color:#f59e0b}.pcard.p-D{border-top-color:#16a34a}.pcard.p-M{border-top-color:#0ea5e9}.pcard.p-F{border-top-color:#ef4444}
+.pph{position:relative;width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--card);display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.pph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top}.pin_{font-weight:700;font-size:20px;color:var(--muted)}
+.pno{position:absolute;right:-2px;bottom:-2px;min-width:22px;padding:1px 5px;border-radius:10px;background:var(--grad);color:#fff;font-style:normal;font-size:11px;font-weight:700}
+.pph{overflow:visible}.pph img{border-radius:50%}
+.pnm{font-size:13px;font-weight:600;line-height:1.2}.pcard small{color:var(--muted);font-size:11.5px}
+.sqhead{padding:2px 4px 10px;color:var(--muted);font-size:13px}.sqhead b{color:var(--text);font-size:15px}
+.fxsec{margin:14px 4px 6px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+h2 .cnt{margin-left:6px;padding:1px 8px;border-radius:10px;background:var(--card2);color:var(--muted);font-size:11px}
+
+.pcwrap{position:relative}.pcwrap .pcard{text-decoration:none;color:inherit;height:100%}
+.pstar{position:absolute;top:4px;right:6px;border:0;background:none;font-size:18px;color:var(--muted);padding:2px 4px;cursor:pointer;line-height:1}.pstar.on{color:#f59e0b}
+.plhero{display:flex;flex-direction:column;align-items:center}
+.plpic{position:relative;width:112px;height:112px;border-radius:50%;background:var(--card2);overflow:hidden;display:flex;align-items:center;justify-content:center;border:3px solid var(--accent)}
+.plpic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top}.plpic .pin_{font-size:34px}
+.plteam a{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-weight:600;margin-top:4px}.plteam img.logo{width:22px;height:22px}
+.stiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:8px;padding:12px}
+.stile{background:var(--card2);border-radius:12px;padding:10px 4px;text-align:center}.stile b{display:block;font-size:19px}.stile small{color:var(--muted);font-size:11px}
+.stwrap{overflow-x:auto;padding:4px 8px 10px}.stbl{border-collapse:collapse;font-size:13px;width:100%;white-space:nowrap}
+.stbl th,.stbl td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--line)}.stbl th{color:var(--muted);font-weight:600;font-size:11.5px}.stbl td:first-child,.stbl th:first-child{text-align:left;position:sticky;left:0;background:var(--card)}
+.favplrow{display:flex;align-items:center;gap:12px;padding:10px 40px 10px 12px;color:inherit;text-decoration:none;border-top:1px solid var(--line)}
+.pph.sm{width:52px;height:52px;flex:none;overflow:hidden;margin:0}.pph.sm img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;border-radius:50%}
+.favplrow .ssline{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-top:2px}.favplrow .ssline b{color:var(--text)}
+.pcwrap.row .pstar{top:50%;transform:translateY(-50%);right:10px;font-size:20px}
+.srcpic{width:36px;height:36px;border-radius:50%;object-fit:cover;object-position:top;background:var(--card2);display:inline-flex;align-items:center;justify-content:center;flex:none;margin-right:10px}
+.srow{display:flex;align-items:center;padding:10px 12px;width:100%}#sq{width:100%}
 .catbar{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none}.catbar::-webkit-scrollbar{display:none}
 .catchip{flex:none;padding:7px 12px;border-radius:999px;background:var(--card);border:1px solid var(--line,rgba(128,128,128,.25));color:var(--text);font-size:13px;text-decoration:none;white-space:nowrap}
 .catcard{display:flex;align-items:center;gap:12px;padding:12px 14px;text-decoration:none;color:var(--text);border-top:1px solid var(--line,rgba(128,128,128,.18))}
@@ -461,6 +499,7 @@ html[data-theme="dark"] img.logo{background:transparent}
   <button class="iconbtn" id="back" hidden aria-label="Geri">‹</button>
   <img class="hlogo" id="hlogo" src="logo-g.png" alt="Grafondex">
   <h1 id="title">Maçlar</h1>
+  <button class="iconbtn" id="searchbtn" aria-label="Ara">🔍</button>
   <button class="iconbtn" id="refresh" aria-label="Yenile">⟳</button>
 </header>
 <main id="app"><div class="spin"></div></main>
@@ -471,7 +510,7 @@ html[data-theme="dark"] img.logo{background:transparent}
   <a href="#/forum" data-tab="forum">💬<span>Topluluk</span></a>
   <a href="#/settings" data-tab="settings">⚙️<span>Ayarlar</span></a>
 </nav>
-<script src="i18n.js?v=22"></script>
-<script src="app.js?v=22"></script>
+<script src="i18n.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
