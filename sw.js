@@ -1,6 +1,7 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
-const V = 'grafondex-v51';
-const SHELL = ['./', 'index.html', 'i18n.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html'];
+const V = 'grafondex-v58';
+const SHELL = ['./', 'index.html', 'i18n.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html',
+  'sounds/goal.mp3', 'sounds/whistle_start.mp3', 'sounds/whistle_ht.mp3', 'sounds/whistle_end.mp3', 'sounds/groan.mp3', 'sounds/red.mp3', 'sounds/var.mp3', 'sounds/ding.mp3'];
 
 self.addEventListener('install', e => {
   // 'reload' so a new version never installs files from the browser's HTTP cache
@@ -38,7 +39,7 @@ self.addEventListener('push', e => {
   e.waitUntil(Promise.all([
     self.registration.showNotification(d.title || 'Grafondex', {
       body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', data: { url: d.url || './' },
-      vibrate: ({ goal: [300, 100, 300, 100, 600], cancel: [600, 200, 200], red: [800, 150, 800], var: [100, 80, 100, 80, 100], start: [500], ht: [200, 150, 200], end: [200, 100, 200, 100, 700], remind: [150] })[d.kind] || [200, 100, 200], // each kind buzzes differently; the sound itself is the phone's own
+      vibrate: ({ goal: [300, 100, 300, 100, 600], cancel: [600, 200, 200], miss: [600, 200, 200], red: [800, 150, 800], var: [100, 80, 100, 80, 100], start: [500], ht: [200, 150, 200], end: [200, 100, 200, 100, 700], remind: [150] })[d.kind] || [200, 100, 200], // each kind buzzes differently; the sound itself is the phone's own
       silent: false, renotify: true, tag: 'gx-' + (d.kind || '') + (d.title || '').slice(0, 20),
     }),
     // the app is open: tell it, so it can play its own ding / goal animation
