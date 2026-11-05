@@ -54,7 +54,7 @@ const ESPN_NUM = { 'tur.1': 3946, 'uefa.champions': 775, 'uefa.europa': 776, 'ue
 for (const L of LEAGUES) L.espn = ESPN_NUM[L.id];
 const leagueOf = id => LEAGUES.find(l => l.id === id) || { id, name: id, logo: 0 };
 const lname = L => L.name;
-const isTff = id => id === 'tur.cup' || id === 'tur.w.1'; // Turkish Cup and women's Super League come from TFF through the user's own server
+const isTff = id => id === 'tur.cup' || id === 'tur.w.1' || id === 'tur.2'; // Turkish Cup and women's Super League come from TFF through the user's own server
 
 // region of a competition: flagcdn code + translated label
 const CC = { tur: 'tr', eng: 'gb-eng', esp: 'es', ita: 'it', ger: 'de', fra: 'fr', ned: 'nl', por: 'pt', bel: 'be', sco: 'gb-sct', aut: 'at', sui: 'ch', gre: 'gr', rus: 'ru', ksa: 'sa', usa: 'us', bra: 'br', arg: 'ar', uefa: 'eu', wal: 'gb-wls', nir: 'gb-nir', swe: 'se', nor: 'no', den: 'dk', fin: 'fi', rou: 'ro', cze: 'cz', cyp: 'cy', isr: 'il', irl: 'ie', jpn: 'jp', chn: 'cn', ind: 'in', aus: 'au', rsa: 'za', nga: 'ng', gha: 'gh',
@@ -237,7 +237,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v40';
 let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
 let actx = null;
 const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
@@ -396,14 +396,18 @@ function fillValues() {
   });
 }
 // league logo when ESPN's table has none: ask ESPN for the league itself, once, and remember it
-const lgMem = new Map(Object.entries(store.get('lglogo', {})));
+const lgMem = new Map(Object.entries(store.get('lglogo2', {})));
 function fillLeagueLogos() {
   document.querySelectorAll('[data-lg]:not([data-ld])').forEach(async el => {
     el.dataset.ld = '1'; const id = el.dataset.lg;
     let u = lgMem.get(id);
     if (u === undefined) {
-      try { const j = await get(core(id), 86400000); u = (j.logos || []).find(x => /default/.test((x.rel || []).join()))?.href || j.logos?.[0]?.href || ''; } catch { return; }
-      lgMem.set(id, u); try { store.set('lglogo', Object.fromEntries(lgMem)); } catch {}
+      try { const j = await get(core(id), 86400000); u = (j.logos || []).find(x => /default/.test((x.rel || []).join()))?.href || j.logos?.[0]?.href || ''; } catch { u = ''; }
+      if (!u && workerBase() && !/^(uefa|fifa|afc|caf|concacaf|conmebol)\./.test(id)) { // no ESPN logo: the league badge from TheSportsDB through the Worker
+        const cc = ccOf(id), ctry = { 'gb-eng': 'England', 'gb-sct': 'Scotland', 'gb-wls': 'Wales', 'gb-nir': 'Northern Ireland', us: 'USA' }[cc] || (() => { try { return new Intl.DisplayNames(['en'], { type: 'region' }).of((cc || '').toUpperCase()).replace('Türkiye', 'Turkey'); } catch { return ''; } })();
+        if (ctry) try { u = (await get(`${workerBase()}/api/lbadge?c=${encodeURIComponent(ctry)}&n=${encodeURIComponent(leagueOf(id).name)}`, 86400000)).url || ''; } catch { return; }
+      }
+      lgMem.set(id, u); try { store.set('lglogo2', Object.fromEntries(lgMem)); } catch {}
     }
     if (u && el.isConnected) { const im = new Image(); im.alt = ''; im.className = 'lgi ' + el.className.replace(/\b(lgi|lgflag)\b/g, '').trim(); im.onload = () => el.isConnected && el.replaceWith(im); im.src = u.replace(/^http:/, 'https:'); }
   });
@@ -611,13 +615,14 @@ async function viewMatches(dateStr) {
   // football: one "all football" list per day (every league at once, refreshed each minute);
   // leagues ESPN can't place in that list, and the other sports, are fetched league by league
   const single = soccer ? mine.filter(l => !leagueOf(l).espn) : mine;
-  const [allDays, res, tvItems, ztk, ksl] = await Promise.all([
+  const [allDays, res, tvItems, ztk, ksl, ksl2] = await Promise.all([
     soccer ? Promise.allSettled(days.map(day => get(`${SITE}soccer/all/scoreboard?dates=${day}&limit=500`, 60000))) : [],
     Promise.allSettled(single.flatMap(l => days.map(day =>
       get(`${api(l)}/scoreboard?dates=${day}`).then(j => ({ l, events: j.events || [] }))))),
     soccer ? tvList(isoDay(d)) : [],
     soccer && enabled.includes('tur.cup') && workerBase() ? ztkData().catch(() => null) : null,
     soccer && enabled.includes('tur.w.1') && workerBase() ? kslData(true).catch(() => null) : null,
+    soccer && enabled.includes('tur.2') && workerBase() ? kslData(true, 0, 'tur.2').catch(() => null) : null,
   ]);
   if (soccer) {
     const byEspn = Object.fromEntries(LEAGUES.filter(L => L.espn).map(L => [String(L.espn), L.id]));
@@ -639,7 +644,8 @@ async function viewMatches(dateStr) {
   const tvOf = (ev, lg) => { const [h, a] = sides(ev.competitions[0]); return tvFor(tvItems, ev.date, h.team.displayName, a.team.displayName, lg); };
   const cupToday = (ztk?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
   const kslToday = (ksl?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
-  const tffToday = { 'tur.cup': cupToday, 'tur.w.1': kslToday };
+  const ksl2Today = (ksl2?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
+  const tffToday = { 'tur.cup': cupToday, 'tur.w.1': kslToday, 'tur.2': ksl2Today };
   const byLeague = {}, seen = new Set(), favRows = [];
   for (const r of res) {
     if (r.status !== 'fulfilled') continue;
@@ -1124,14 +1130,16 @@ async function viewTeam(league, id, season) {
   setTitle(name);
   const teamNews = async () => (await newsFor(name)) || (LANG === 'en' ? await espnNews : []);
   const fav = isFav(id, league);
-  const newsP = teamNews().catch(() => []), forumP = teamForumHtml(league, id).catch(() => ''); // slow parts run side by side
+  const newsP = teamNews().catch(() => []), forumP = teamForumHtml(league, id).catch(() => ''); // slow parts run side by side, after the page is shown
   const xiP = sportOf(league) === 'soccer' ? predictedXi(id, evs.past).catch(() => '') : Promise.resolve('');
-  const ranks = sportOf(league) === 'soccer' && !pastSeason ? await teamRanks(id, evs, league).catch(() => []) : [];
+  const ranksP = sportOf(league) === 'soccer' && !pastSeason ? teamRanks(id, evs, league).catch(() => []) : Promise.resolve([]);
   const rank = stat('rank')?.value || stat('playoffSeed')?.value;
-  const summary = ranks.length ? ranks.slice(0, 2).map(r => t('rankIn', r.rank, r.name)).join(' · ') : rank ? t('rankIn', rank, groups.length > 1 ? group.name : lname(leagueOf(league))) : '';
+  const baseSummary = rank ? t('rankIn', rank, groups.length > 1 ? group.name : lname(leagueOf(league))) : '';
+  const sumP = ranksP.then(ranks => ranks.length ? ranks.slice(0, 2).map(r => t('rankIn', r.rank, r.name)).join(' · ') : baseSummary);
+  const summary = baseSummary;
   const rec = stat('overall')?.displayValue;
   let html = `<div class="card hero">${img(id, 'big', league)}<div style="font-size:20px;font-weight:700;margin-top:8px">${esc(name)}</div>
-    <div class="st">${esc(summary)}${rec ? ' · ' + esc(rec) + (sportOf(league) === 'soccer' ? ' ' + t('wdl') : '') : ''}</div>
+    <div class="st">${lazy(sumP.then(esc), 'span')}${rec ? ' · ' + esc(rec) + (sportOf(league) === 'soccer' ? ' ' + t('wdl') : '') : ''}</div>
     <button class="favbtn ${fav ? 'on' : ''}" data-fav="${id}" data-name="${esc(name)}" data-league="${league}">${fav ? t('inFavs') : t('addFav')}</button></div>`;
 
   const rows = (list, withDate) => list.map(e => matchRow(e, leagueOfEvent(e, league), withDate)).join('');
@@ -1144,7 +1152,7 @@ async function viewTeam(league, id, season) {
     || `<div class="empty">${t('noMatches')}</div>`;
   const fx = seasonBar + fxBody;
 
-  if (sportOf(league) !== 'soccer') return html + seg('team', [t('fixtures'), t('squad'), t('news.tab'), t('cat.teamForum')]) + pane('team', 0, fx) + pane('team', 1, usRosterHtml(roster, league)) + pane('team', 2, newsCard(await newsP, t('news.title'))) + pane('team', 3, await teamForumHtml(league, id));
+  if (sportOf(league) !== 'soccer') return html + seg('team', [t('fixtures'), t('squad'), t('news.tab'), t('cat.teamForum')]) + pane('team', 0, fx) + pane('team', 1, usRosterHtml(roster, league)) + pane('team', 2, lazy(newsP.then(n => newsCard(n, t('news.title'))))) + pane('team', 3, await teamForumHtml(league, id));
   const POS = [['Goalkeeper', 'pos.G'], ['Defender', 'pos.D'], ['Midfielder', 'pos.M'], ['Forward', 'pos.F']];
   const ath = roster?.athletes || [];
   const pl = x => playerCard(x, [x.age ? t('age', x.age) : '', x.citizenship || ''].filter(Boolean).join(' · '), 'soccer', league, name);
@@ -1157,19 +1165,20 @@ async function viewTeam(league, id, season) {
   if (other.length) sq += `<div class="card"><h2>${t('other')}</h2>${pgrid(other.map(pl))}</div>`;
   if (ath.length) sq = `<div class="sqhead"><b>${ath.length}</b> ${t('sq.players')}</div>` + sq;
   if (!sq) sq = `<div class="empty">${t('noSquad')}</div>`;
-  sq = (await xiP) + sq;
+  sq = lazy(xiP) + sq;
 
   // profile: competitions the club plays in (from its schedule) and the head coach
   const comps = [...new Set([...evs.past, ...evs.live, ...evs.next].map(e => { const sl = leagueOfEvent(e, ''); return LEAGUES.some(l => l.id === sl) ? lname(leagueOf(sl)) : (e.league?.name || e.league?.abbreviation || ''); }).filter(Boolean))];
   const coach = [roster?.coach?.[0]?.firstName, roster?.coach?.[0]?.lastName].filter(Boolean).join(' ');
-  const infoRows = [['🏆', t('competitions'), comps.join(', ')], ['🧑‍💼', t('coach'), coach], ['📊', t('th.team'), summary]].filter(r => r[2]);
-  const infoPane = (infoRows.length ? `<div class="card">${infoRows.map(([ic, kk, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(kk)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>` : `<div class="empty">${t('noInfo')}</div>`);
+  const infoPane = lazy(sumP.then(summary => { const infoRows = [['🏆', t('competitions'), comps.join(', ')], ['🧑‍💼', t('coach'), coach], ['📊', t('th.team'), summary]].filter(r => r[2]); return (infoRows.length ? `<div class="card">${infoRows.map(([ic, kk, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(kk)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>` : `<div class="empty">${t('noInfo')}</div>`); }));
   const k = 'team';
   // its own tab: the team's place in every competition, then the full tables (its team is the one the user came from)
+  const tbPane = lazy(ranksP.then(async ranks => {
   let tbPane = ranksCard(ranks);
   tbPane += (await Promise.all(ranks.slice(0, 3).map(async r => { try { return `<div class="card"><h2>${lgIcon(r.slug)} ${esc(r.name)}<a href="#/league/${esc(r.slug)}/puan">${t('o.standings')}</a></h2>${await standingsHtml(r.slug)}</div>`; } catch { return ''; } }))).join('');
   if (!tbPane) tbPane = `<div class="empty">${t('noTable')}</div>`;
-  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, newsCard(await newsP, t('news.title'))) + pane(k, 5, await forumP);
+  return tbPane; }));
+  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, lazy(newsP.then(n => newsCard(n, t('news.title'))))) + pane(k, 5, lazy(forumP));
 }
 
 
@@ -1238,10 +1247,9 @@ async function viewPlayer(sport, league, id) {
     <tbody>${st.splits.map(sp => `<tr><td>${esc(sp.displayName)}</td>${sp.stats.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : '';
   const ev = o?.nextGame?.league?.events?.[0];
   const next = ev ? `<div class="card"><h2>${t('pl.next')}</h2><div class="inforow"><span class="k">${esc(dshort(ev.date))} · ${esc(hm(ev.date))}</span><span class="v">${esc(ev.name || ev.shortName || '')}</span></div></div>` : '';
-  const pn = (await pnP) || (LANG === 'en' ? o?.news : null);
-  const news = pn?.length ? newsCard(pn, t('news.title')) : '';
+  const news = lazy(pnP.then(pn => { pn = pn || (LANG === 'en' ? o?.news : null); return pn?.length ? newsCard(pn, t('news.title')) : `<div class="empty">${t('news.none')}</div>`; }));
   const cmpBtn = `<a class="btn ghost" href="#/compare/${esc(sport)}/${esc(league)}/${esc(id)}" style="display:block;text-align:center;margin-bottom:10px">${t('cmp.btn')}</a>`;
-  const career = await careerP;
+  const career = lazy(careerP.then(c => c || `<div class="empty">${t('pl.noCareer')}</div>`));
   const summary = tiles + table + next + info + (!tiles && !table ? `<div class="empty">${t('pl.noStats')}</div>` : '');
   const key = 'player';
   return hero + cmpBtn + seg(key, [t('pl.tabSummary'), t('pl.career'), t('news.tab')]) + pane(key, 0, summary) + pane(key, 1, career || `<div class="empty">${t('pl.noCareer')}</div>`) + pane(key, 2, news || `<div class="empty">${t('news.none')}</div>`);
@@ -1669,7 +1677,7 @@ async function viewLeague(league = 'tur.1', tab = 'fikstur', start) {
   const L = leagueOf(league);
   setTitle(lname(L));
   if (tab === 'puan') store.set('tableLeague', league);
-  const tabs = league === 'tur.w.1' ? LTABS.slice(0, 2) : isTff(league) ? LTABS.slice(0, 1)
+  const tabs = league === 'tur.w.1' || league === 'tur.2' ? LTABS.slice(0, 2) : isTff(league) ? LTABS.slice(0, 1)
     : LTABS.filter(([k]) => (k !== 'puan' || L.table) && (sportOf(league) === 'soccer' || !['gol', 'asist'].includes(k)));
   if (!tabs.some(([k]) => k === tab)) tab = 'fikstur';
   const sb = isTff(league) ? null : await get(`${api(league)}/scoreboard`, HOUR).catch(() => null);
@@ -1678,7 +1686,7 @@ async function viewLeague(league = 'tur.1', tab = 'fikstur', start) {
     <div><b>${esc(lname(L))}</b>${regionLine(league)}${yr ? `<small>${t('season', yr)}</small>` : ''}</div>
     <button class="pin ${pinned.includes(league) ? 'on' : ''}" data-pin="${league}" aria-label="${t('pin')}">${pinned.includes(league) ? '★' : '☆'}</button></div>`;
   const segHtml = `<div class="seg">${tabs.map(([k, l]) => `<a data-replace href="#/league/${league}/${k}" class="${k === tab ? 'on' : ''}">${t(l)}</a>`).join('')}</div>`;
-  if (league === 'tur.w.1') return head + segHtml + await kslHtml(tab, start);
+  if (league === 'tur.w.1' || league === 'tur.2') return head + segHtml + await kslHtml(tab, start, league);
   if (isTff(league)) return head + segHtml + await tffCupHtml(start);
   const soccerPast = sportOf(league) === 'soccer' && selSeason(league) !== curSeasonYear();
   const seasonBar = sportOf(league) === 'soccer' ? `<div class="seasonbar">${seasonSelect(`data-league-season="${league}"`, selSeason(league))}</div>` : '';
@@ -1694,7 +1702,12 @@ async function viewLeague(league = 'tur.1', tab = 'fikstur', start) {
 const workerBase = () => (notif.url || DEFAULT_WORKER).replace(/\/$/, '');
 const needWorkerHtml = () => `<div class="empty">${t('needWorker')}<br><br><a href="#/settings" style="color:var(--accent)">${t('nav.settings')} ›</a></div>`;
 // "AĞRI 1970 SPOR KULÜBÜ" → "Ağrı 1970 Spor"
+// 1. Lig clubs carry sponsor names in the registry (e.g. "METRO HOLDİNG KAYSERİSPOR"): the usual short names
+const TFF_SHORT = [['IĞDIR', 'Iğdır FK'], ['KEÇİÖRENGÜCÜ', 'Keçiörengücü'], ['MANİSA', 'Manisa FK'], ['VAN SPOR', 'Vanspor'], ['SİVASSPOR', 'Sivasspor'], ['MUĞLASPOR', 'Muğlaspor'], ['EROKSPOR', 'Esenler Erokspor'],
+  ['PENDİKSPOR', 'Pendikspor'], ['İSTANBULSPOR', 'İstanbulspor'], ['BANDIRMA', 'Bandırmaspor'], ['KARAGÜMRÜK', 'Fatih Karagümrük'], ['ÜMRANİYESPOR', 'Ümraniyespor'], ['KAYSERİSPOR', 'Kayserispor'],
+  ['SARIYER', 'Sarıyer'], ['BATMAN PETROL', 'Batman Petrolspor'], ['BODRUM', 'Bodrum FK'], ['BOLUSPOR', 'Boluspor'], ['MARDİN 1969', 'Mardin 1969 Spor'], ['BURSASPOR', 'Bursaspor'], ['ANTALYASPOR', 'Antalyaspor']];
 function tffName(n) {
+  { const up = String(n || '').toLocaleUpperCase('tr'); const hit = TFF_SHORT.find(([k]) => up.includes(k)); if (hit) return hit[1]; }
   const s = String(n || '').replace(/\s+(A\.\s?Ş\.?|FUTBOL KULÜBÜ|SPOR KULÜBÜ DERNEĞİ|KULÜBÜ|DERNEĞİ)$/u, '');
   return s.toLocaleLowerCase('tr').replace(/(^|[\s(\-./])(\p{L})/gu, (_, a, b) => a + b.toLocaleUpperCase('tr'));
 }
@@ -1714,25 +1727,25 @@ function tffRow(m, lg = 'tur.cup') {
     <div class="teams">${team(m.home, sc?.[0], sc && +sc[0] > +sc[1])}${team(m.away, sc?.[1], sc && +sc[1] > +sc[0])}</div></a>`;
 }
 const ztkData = () => get(`${workerBase()}/ztk`, 300000);
-const kslData = (around, hafta) => get(`${workerBase()}/ksl?${hafta ? 'hafta=' + hafta : around ? 'around=1' : ''}`, 120000);
+const kslData = (around, hafta, lg = 'tur.w.1') => get(`${workerBase()}/ksl?${[hafta ? 'hafta=' + hafta : around ? 'around=1' : '', lg === 'tur.2' ? 'lig=142' : ''].filter(Boolean).join('&')}`, 120000);
 // Turkish women's Super League: week-by-week fixtures and the table
-async function kslHtml(tab, start) {
+async function kslHtml(tab, start, lg = 'tur.w.1') {
   if (!workerBase()) return needWorkerHtml();
   if (tab === 'puan') {
-    const d = await kslData(false);
+    const d = await kslData(false, 0, lg);
     if (!d.table?.length) return `<div class="empty">${t('noTable')}</div>`;
     const rows = d.table.map(r => `<tr><td class="r">${r.rank}</td><td class="t"><span class="tinit">${esc(tffName(r.name).slice(0, 1))}</span><span>${esc(tffName(r.name))}</span></td><td>${esc(r.o)}</td><td>${esc(r.g)}</td><td>${esc(r.b)}</td><td>${esc(r.m)}</td><td>${esc(r.av)}</td><td class="p">${esc(r.p)}</td></tr>`).join('');
     return `<div class="card"><table><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
-  const d = await kslData(false, start ? +start : 0);
-  const cur = +start || d.current, total = d.total || 30, base = '#/league/tur.w.1/fikstur/';
+  const d = await kslData(false, start ? +start : 0, lg);
+  const cur = +start || d.current, total = d.total || 30, base = `#/league/${lg}/fikstur/`;
   const nav = `<div class="roundnav"><a data-replace href="${cur > 1 ? base + (cur - 1) : '#'}" class="${cur > 1 ? '' : 'off'}" aria-label="${t('prevRound')}">‹</a>
-    <select data-ksl-week>${Array.from({ length: total }, (_, k) => `<option value="${k + 1}" ${k + 1 === cur ? 'selected' : ''}>${t('roundN', k + 1)}</option>`).join('')}</select>
+    <select data-ksl-week="${lg}">${Array.from({ length: total }, (_, k) => `<option value="${k + 1}" ${k + 1 === cur ? 'selected' : ''}>${t('roundN', k + 1)}</option>`).join('')}</select>
     <a data-replace href="${cur < total ? base + (cur + 1) : '#'}" class="${cur < total ? '' : 'off'}" aria-label="${t('nextRound')}">›</a></div>`;
   const ms = [...(d.rounds?.[0]?.matches || [])].sort((a, b) => (a.iso || '').localeCompare(b.iso || ''));
   const byDay = new Map();
   for (const m of ms) { const k = m.iso ? fmtD(m.iso, { weekday: 'long', day: 'numeric', month: 'long' }) : ''; (byDay.get(k) || byDay.set(k, []).get(k)).push(m); }
-  return nav + `<div class="weektitle">${t('roundN', cur)}</div>` + ([...byDay].map(([k, l]) => `<div class="card"><h2 style="text-transform:capitalize">${esc(k)}</h2>${l.map(m => tffRow(m, 'tur.w.1')).join('')}</div>`).join('') || `<div class="empty">${t('noMatches')}</div>`);
+  return nav + `<div class="weektitle">${t('roundN', cur)}</div>` + ([...byDay].map(([k, l]) => `<div class="card"><h2 style="text-transform:capitalize">${esc(k)}</h2>${l.map(m => tffRow(m, lg)).join('')}</div>`).join('') || `<div class="empty">${t('noMatches')}</div>`);
 }
 
 async function tffCupHtml(start) {
@@ -1849,12 +1862,12 @@ const syncNotify = () => callWorker('/sync', {
 
 function notifyCard() {
   return `<div class="card"><h2>${t('notifs')}</h2>
-    <div class="form-block">
+    <${isAdminUser() ? 'details class="form-block advsec"' : 'div hidden'}>${isAdminUser() ? '<summary>⚙️ Server / ntfy (admin)</summary>' : ''}
       <label>${t('serverUrl')}<input id="n-url" type="url" placeholder="https://grafondex.….workers.dev" value="${esc(notif.url)}"></label>
       <label>${t('secretKey')}<input id="n-key" type="password" autocomplete="off" value="${esc(notif.key)}"></label>
       <label>${t('topic')}<input id="n-topic" value="${esc(notif.topic)}"></label>
       <div class="hint">${t('ntfyHint')}</div>
-    </div>
+    </${isAdminUser() ? 'details' : 'div'}>
     <div class="form-block"><button class="btn" id="n-push">${t('pushBtn')}</button><div class="hint">${t('pushHint')}</div></div>
     ${NPREFS.map(k => `<label class="setrow"><span>${t('np.' + k)}</span><input type="checkbox" data-nprefs="${k}" ${notif.prefs[k] ?? true ? 'checked' : ''}></label>`).join('')}
     <div class="form-block"><button class="btn" id="n-save">${t('saveTest')}</button><div class="hint" id="n-msg"></div></div>
@@ -2306,7 +2319,28 @@ function paintProfileTab() {
   if (!ti.dataset.icon) ti.dataset.icon = ti.innerHTML;
   ti.dataset.av = '1'; ti.innerHTML = `<i class="tav" style="background:${esc(acct.user.color || hashColor(acct.user.username))}">${esc(String(acct.user.username)[0].toUpperCase())}</i>`;
 }
+// slow, non-critical parts of a page (news, forum, other tables ...) load after the page is already on screen
+const lazyJobs = new Map(), lazyDone = new Map(); let lzSeq = 0;
+const LZ_PH = '<i class="sk w70" style="display:block;margin:14px"></i>';
+function lazy(p, tag = 'div') {
+  const n = ++lzSeq;
+  lazyJobs.set(n, Promise.resolve(p).then(h => h ?? '', () => '').then(h => { lazyDone.set(n, h); return h; }));
+  if (lazyJobs.size > 200) { const k = lazyJobs.keys().next().value; lazyJobs.delete(k); lazyDone.delete(k); }
+  return `<${tag} class="lz" data-lz="${n}">${LZ_PH}</${tag}>`;
+}
+function fillLazy() {
+  document.querySelectorAll('[data-lz]:not([data-lzd])').forEach(el => {
+    const n = +el.dataset.lz, tag = el.tagName.toLowerCase(), ph = `<${tag} class="lz" data-lz="${n}">${LZ_PH}</${tag}>`;
+    const put = h => {
+      if (el.isConnected) { el.dataset.lzd = '1'; el.innerHTML = h; afterRender(); }
+      const done = `<${tag} class="lz" data-lz="${n}" data-lzd="1">${h}</${tag}>`;
+      for (const [k, v] of pageCache) if (v.html.includes(ph)) pageCache.set(k, { ...v, html: v.html.replace(ph, () => done) });
+    };
+    if (lazyDone.has(n)) put(lazyDone.get(n)); else lazyJobs.get(n)?.then(put);
+  });
+}
 const afterRender = () => {
+  fillLazy();
   paintProfileTab();
   fillBadges(); fillLeagueLogos(); fillValues();
   { const ab = document.getElementById('adminbtn'); if (ab) ab.hidden = !isAdminUser(); }
@@ -2707,7 +2741,7 @@ document.addEventListener('change', e => {
   if (e.target.matches('[data-team-season]')) { location.replace('#/team/' + e.target.dataset.teamSeason + '/' + e.target.value); return; }
   if (e.target.matches('[data-league-season]')) { leagueSeason[e.target.dataset.leagueSeason] = +e.target.value; location.replace(`#/league/${e.target.dataset.leagueSeason}/fikstur`); render(); return; }
   if (e.target.matches('[data-month-pick]')) { location.replace(`#/league/${e.target.dataset.monthPick}/fikstur/${e.target.value}`); return; }
-  if (e.target.matches('[data-ksl-week]')) { location.replace('#/league/tur.w.1/fikstur/' + e.target.value); return; }
+  if (e.target.matches('[data-ksl-week]')) { location.replace('#/league/' + (e.target.dataset.kslWeek || 'tur.w.1') + '/fikstur/' + e.target.value); return; }
   if (e.target.matches('[data-tff-round]')) { location.replace('#/league/tur.cup/fikstur/' + e.target.value); return; }
   if (e.target.matches('[data-round-pick]')) { location.replace(`#/league/${e.target.dataset.roundPick}/fikstur/${e.target.value}`); return; }
   if (e.target.matches('[data-date-pick]')) { if (e.target.value) location.hash = '#/matches/' + e.target.value.replaceAll('-', ''); return; }
