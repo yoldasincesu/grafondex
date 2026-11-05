@@ -1,11 +1,12 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
 const V = 'grafondex-v59';
-const SHELL = ['./', 'index.html', 'i18n.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html',
-  'sounds/goal.mp3', 'sounds/whistle_start.mp3', 'sounds/whistle_ht.mp3', 'sounds/whistle_end.mp3', 'sounds/groan.mp3', 'sounds/red.mp3', 'sounds/var.mp3', 'sounds/ding.mp3'];
+const SHELL = ['./', 'index.html', 'i18n.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html'];
+// the sounds live in sounds/; one missing file must not stop the new version from installing
+const SOUNDS = ['goal', 'whistle_start', 'whistle_ht', 'whistle_end', 'groan', 'red', 'var', 'ding'].map(n => 'sounds/' + n + '.mp3');
 
 self.addEventListener('install', e => {
   // 'reload' so a new version never installs files from the browser's HTTP cache
-  e.waitUntil(caches.open(V).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(V).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' }))).then(() => Promise.all(SOUNDS.map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => {}))))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {

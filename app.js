@@ -315,7 +315,7 @@ const sfxBuf = {};
 let sfxLoading = null;
 function sfxLoad() {
   const c = audioCtx(); if (!c || sfxLoading) return sfxLoading;
-  sfxLoading = Promise.all([...new Set(Object.values(SFX))].map(n => fetch(`sounds/${n}.mp3`).then(r => r.arrayBuffer()).then(b => new Promise((ok, no) => c.decodeAudioData(b, ok, no))).then(buf => { sfxBuf[n] = buf; }).catch(() => {})));
+  sfxLoading = Promise.all([...new Set(Object.values(SFX))].map(n => fetch(`sounds/${n}.mp3`).then(r => r.ok ? r : fetch(`${n}.mp3`)).then(r => r.arrayBuffer()).then(b => new Promise((ok, no) => c.decodeAudioData(b, ok, no))).then(buf => { sfxBuf[n] = buf; }).catch(() => {})));
   return sfxLoading;
 }
 addEventListener('pointerdown', () => sfxLoad(), { once: true, passive: true });
