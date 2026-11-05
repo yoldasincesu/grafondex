@@ -295,7 +295,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
@@ -419,6 +419,7 @@ const toastQ = [];
 let toastBusy = false;
 function goalToast(g) {
   const mine = isFav(g.h.team.id, g.league) || isFav(g.a.team.id, g.league) || location.hash.includes(`/${g.id}`);
+  if (fx.favOnly && !mine && g.id !== 'demo') return; // Settings: only my favourites' goals (and the match I have open)
   // whose goal? a favourite scored → the full roar; a favourite conceded → the crowd's groan
   const sc = g.side ? g.a : g.h, ot = g.side ? g.h : g.a, forUs = isFav(sc.team.id, g.league), against = !forUs && isFav(ot.team.id, g.league);
   toastQ.push({ ...g, mine, forUs, against });
@@ -475,15 +476,31 @@ const calBtn = (title, iso, where, mins = 120) => iso ? `<div class="form-block"
 
 // ---- club badges for sports ESPN has no crests for (volleyball, handball, basketball): TheSportsDB through the Worker; a coloured initials badge until it arrives
 const BSP = { volley: 'volleyball', eubasket: 'basketball', handball: 'handball', basketball: 'basketball' };
+// TFF clubs (1. / 2. / 3. Lig, cup, women): the letter badge is swapped for the crest (TheSportsDB) once found
+const tffLogo = (name, big) => `<span class="tinit${big ? ' big' : ''}" data-badge="${esc(tffName(name))}" data-bsp="soccer">${esc(tffName(name).slice(0, 1))}</span>`;
 const phLogo = (name, sport, cls = '') => `<span class="logo ph tl ${cls}" data-badge="${esc(name)}" data-bsp="${esc(BSP[sport] || sport || 'volleyball')}" style="--pc:${pcol(name)}">${esc(initials(name))}</span>`;
-const badgeMem = new Map(Object.entries(store.get('badges', {})));
+const badgeMem = new Map(Object.entries(store.get('badges', {})).filter(([, v]) => v));
+const bTok = s => String(s || '').toLowerCase().replace(/ı/g, 'i').replace(/i̇/g, 'i').normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 1 && !/^(fk|sk|spor|kulubu|jk|as|fc|gsk|bld|belediye)$/.test(w));
+let tsdbAt = 0;
+async function tsdbDirect(name) {
+  const tk = bTok(name); if (!tk.length) return '';
+  for (const q of [...new Set([name, tk.join(' '), tk[0]])]) {
+    const wait = tsdbAt + 2100 - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); tsdbAt = Date.now();
+    const j = await fetch('https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=' + encodeURIComponent(q)).then(r => r.ok ? r.json() : null).catch(() => null);
+    const best = (j?.teams || []).filter(x => x.strBadge && /soccer/i.test(x.strSport || '')).find(x => { const xt = bTok(x.strTeam + ' ' + (x.strAlternate || '')); return tk.every(w => xt.some(y => y.includes(w) || w.includes(y))); });
+    if (best) return best.strBadge + '/small';
+  }
+  return '';
+}
 let badgeChain = Promise.resolve();
 const badgeUrl = (name, sp) => new Promise(res => {
   const k = sp + '|' + name; if (badgeMem.has(k)) return res(badgeMem.get(k));
   badgeChain = badgeChain.then(async () => {
     let u = '';
-    try { u = (await get(`${workerBase()}/api/badge?n=${encodeURIComponent(name)}&sp=${encodeURIComponent(sp)}`, 86400000)).url || ''; } catch { return res(''); }
-    badgeMem.set(k, u); try { store.set('badges', Object.fromEntries([...badgeMem].slice(-500))); } catch {}
+    try { u = (await get(`${workerBase()}/api/badge?n=${encodeURIComponent(name)}&sp=${encodeURIComponent(sp)}`, 86400000)).url || ''; } catch {}
+    // not found through the Worker (TheSportsDB limits shared callers): ask it straight from the phone, gently (its free tier allows ~30 calls a minute)
+    if (!u && sp === 'soccer') u = await tsdbDirect(name).catch(() => '');
+    if (u) { badgeMem.set(k, u); try { store.set('badges', Object.fromEntries([...badgeMem].slice(-500))); } catch {} }
     res(u);
   });
 });
@@ -494,7 +511,7 @@ function fillBadges() {
     badgeUrl(el.dataset.badge, el.dataset.bsp).then(u => {
       if (!u || !el.isConnected) return;
       const im = new Image(); im.alt = ''; im.loading = 'lazy';
-      im.onload = () => { if (!el.isConnected) return; if (el.classList.contains('tl')) { im.className = 'logo ' + el.className.replace(/\b(logo|ph|tl)\b/g, '').trim(); el.replaceWith(im); } else { im.style.objectFit = 'contain'; el.appendChild(im); } };
+      im.onload = () => { if (!el.isConnected) return; if (el.classList.contains('tinit')) { im.className = 'logo tcrest' + (el.classList.contains('big') ? ' big' : ''); el.replaceWith(im); } else if (el.classList.contains('tl')) { im.className = 'logo ' + el.className.replace(/\b(logo|ph|tl)\b/g, '').trim(); el.replaceWith(im); } else { im.style.objectFit = 'contain'; el.appendChild(im); } };
       im.src = u;
     });
   });
@@ -2244,7 +2261,7 @@ async function viewFavs() {
   const tffCards = (await Promise.all(tffF.map(async f => {
     const nm = String(f.id).slice(4), d = await get(`${workerBase()}/tffteam?pid=${TFF_PID[f.league]}&grup=${encodeURIComponent(f.grup || '')}&name=${encodeURIComponent(nm)}`, 300000).catch(() => null);
     const ms = (d?.matches || []), next = ms.filter(m => !tffScore(m.score)), last = ms.filter(m => tffScore(m.score)).slice(-1);
-    return `<div class="card"><h2><span class="tinit">${esc(f.name.slice(0, 1))}</span> <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/tt/${esc(f.league)}/${encodeURIComponent(nm)}/${esc(f.grup || '')}">${t('teamLink')}</a></h2>${[...last, ...next].map(m => tffRow(m, f.league, true)).join('') || `<div class="empty" style="padding:14px">${t('noMatches')}</div>`}</div>`;
+    return `<div class="card"><h2>${tffLogo(f.name)} <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/tt/${esc(f.league)}/${encodeURIComponent(nm)}/${esc(f.grup || '')}">${t('teamLink')}</a></h2>${[...last, ...next].map(m => tffRow(m, f.league, true)).join('') || `<div class="empty" style="padding:14px">${t('noMatches')}</div>`}</div>`;
   }))).join('');
   const html = (espnF.length ? await favCards(espnF) : '') + tffCards + xHtml + (mineP.length ? await favPlayers(mineP) : '');
   // a calendar the phone subscribes to (webcal): it keeps itself up to date with every followed football team's matches
@@ -2561,7 +2578,7 @@ function tffRoundName(n) {
 const tffScore = s => { const m = String(s || '').match(/^(\d+)\s*-\s*(\d+)/); return m ? [m[1], m[2]] : null; };
 function tffRow(m, lg = 'tur.cup', withDate = false) {
   const sc = tffScore(m.score);
-  const team = (n, g, win) => `<div class="tm ${win ? 'win' : ''}"><span class="tinit">${esc(tffName(n).slice(0, 1))}</span><span class="tn">${esc(tffName(n))}</span><b class="ts post">${g ?? ''}</b></div>`;
+  const team = (n, g, win) => `<div class="tm ${win ? 'win' : ''}">${tffLogo(n)}<span class="tn">${esc(tffName(n))}</span><b class="ts post">${g ?? ''}</b></div>`;
   return `<a class="match" href="#/tff/${m.id}/${lg}"><div class="mtime ${sc ? 'post' : 'pre'}">${withDate && m.iso ? dshort(m.iso) + '<small>' : ''}${sc ? t('st.FT') : (m.iso ? hm(m.iso) : '')}${withDate && m.iso ? '</small>' : ''}</div>
     <div class="teams">${team(m.home, sc?.[0], sc && +sc[0] > +sc[1])}${team(m.away, sc?.[1], sc && +sc[1] > +sc[0])}</div></a>`;
 }
@@ -2593,7 +2610,7 @@ const tffTableHtml = (d, lg, hl = '') => {
   // the zone colours of the Turkish leagues: promotion (green), play-off (light green / blue), relegation (red)
   const zone = r => lg === 'tur.2' ? (r.rank <= 2 ? '#16a34a' : r.rank <= 6 ? '#22c55e99' : r.rank > n - 4 ? '#dc2626' : '') : TFF_GROUPED(lg) ? (r.rank <= 1 ? '#16a34a' : r.rank <= 5 ? '#22c55e99' : r.rank > n - 3 ? '#dc2626' : '') : (r.rank <= 1 ? '#16a34a' : r.rank > n - 2 ? '#dc2626' : '');
   const rows = d.table.map(r => { const zc = zone(r), f = form.get(String(r.name).toUpperCase());
-    return `<tr class="${hl && r.name === hl ? 'me' : ''}"><td class="r"><b class="rkbox ${zc ? 'z' : ''}" style="${zc ? `background:${zc}` : ''}">${r.rank}</b></td><td class="t"><a class="tl" href="#/tt/${lg}/${encodeURIComponent(r.name)}/${esc(d.grup || '')}"><span class="tinit">${esc(tffName(r.name).slice(0, 1))}</span><span>${esc(tffName(r.name))}</span></a></td><td>${esc(r.o)}</td><td>${esc(r.g)}</td><td>${esc(r.b)}</td><td>${esc(r.m)}</td><td class="gl">${r.a !== '' && r.y !== '' && r.a != null ? `${esc(r.a)}:${esc(r.y)}` : ''}</td><td>${esc(r.av)}</td><td class="p">${esc(r.p)}</td>${form.size ? `<td class="fm">${formBoxes(f)}</td>` : ''}</tr>`; }).join('');
+    return `<tr class="${hl && r.name === hl ? 'me' : ''}"><td class="r"><b class="rkbox ${zc ? 'z' : ''}" style="${zc ? `background:${zc}` : ''}">${r.rank}</b></td><td class="t"><a class="tl" href="#/tt/${lg}/${encodeURIComponent(r.name)}/${esc(d.grup || '')}">${tffLogo(r.name)}<span>${esc(tffName(r.name))}</span></a></td><td>${esc(r.o)}</td><td>${esc(r.g)}</td><td>${esc(r.b)}</td><td>${esc(r.m)}</td><td class="gl">${r.a !== '' && r.y !== '' && r.a != null ? `${esc(r.a)}:${esc(r.y)}` : ''}</td><td>${esc(r.av)}</td><td class="p">${esc(r.p)}</td>${form.size ? `<td class="fm">${formBoxes(f)}</td>` : ''}</tr>`; }).join('');
   const legend = `<div class="legend"><div><i style="background:#16a34a"></i>${t(lg === 'tur.w.1' ? 'z.champ' : 'z.promo')}</div><div><i style="background:#22c55e99"></i>${t('z.playoff')}</div><div><i style="background:#dc2626"></i>${t('n.Relegation')}</div></div>`;
   return `<div class="card"><div class="stscroll"><table class="stnew"><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.goals')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th>${form.size ? `<th>${t('th.form')}</th>` : ''}</tr></thead><tbody>${rows}</tbody></table></div>${legend}</div>`;
 };
@@ -2646,7 +2663,7 @@ async function viewTffTeam(lg, rawName, grup = '') {
   const d = await get(`${workerBase()}/tffteam?pid=${TFF_PID[lg]}&grup=${encodeURIComponent(grup || '')}&name=${encodeURIComponent(name)}`, 300000).catch(() => null);
   if (!d || d.error) return `<div class="empty">${t('loadFail')}</div>`;
   const r = d.row;
-  const hero = `<div class="card hero"><span class="tinit big">${esc(tffName(name).slice(0, 1))}</span><div style="font-size:20px;font-weight:700;margin-top:8px">${esc(tffName(name))}</div>
+  const hero = `<div class="card hero">${tffLogo(name, true)}<div style="font-size:20px;font-weight:700;margin-top:8px">${esc(tffName(name))}</div>
     <div class="st">${r ? esc(`${t('rankIn', r.rank, lname(leagueOf(lg)))} · ${r.o} ${t('th.P')} · ${r.g}-${r.b}-${r.m} · ${r.p} ${t('th.Pts')}`) : esc(lname(leagueOf(lg)))}</div>
     ${(() => { const fid = 'tff:' + name.toUpperCase(), on = isFav(fid, lg); return `<button class="favbtn ${on ? 'on' : ''}" data-fav="${esc(fid)}" data-name="${esc(tffName(name))}" data-league="${esc(lg)}" data-grup="${esc(d.grup || grup || '')}">${on ? t('inFavs') : t('addFav')}</button>`; })()}</div>`;
   const ms = d.matches || [], done = ms.filter(m => tffScore(m.score)).reverse(), next = ms.filter(m => !tffScore(m.score));
@@ -2776,6 +2793,7 @@ async function viewSettings(sub) {
     ${[['goal', t('np.goal')], ['concede', t('fx.concede')], ['cancel', t('fx.cancel')], ['miss', t('fx.miss')], ['var', t('np.var')], ['red', t('np.red')], ['remind', t('np.remind')], ['start', t('np.start')], ['ht', t('np.ht')], ['end', t('np.end')], ['chime', t('fx.chime')]].map(([k, n]) => `<div class="setrow sndrow"><button class="sndplay" data-snd="${k}" aria-label="▶">▶</button><span>${esc(n)}</span><input type="checkbox" data-sndon="${k}" ${fx.mute[k] ? '' : 'checked'}></div>`).join('')}</div>`;
   const fxCard = `<div class="card"><h2>⚽ ${t('fx.title')}</h2>
     <label class="setrow"><span>${t('fx.anim')}</span><input type="checkbox" data-fx="anim" ${fx.anim ? 'checked' : ''}></label>
+    <label class="setrow"><span>${t('fx.favOnly')}</span><input type="checkbox" data-fx="favOnly" ${fx.favOnly ? 'checked' : ''}></label>
     <label class="setrow"><span>${t('fx.sound')}</span><input type="checkbox" data-fx="sound" ${fx.sound ? 'checked' : ''}></label>
     <label class="setrow"><span>${t('fx.voice')}</span><input type="checkbox" data-fx="voice" ${fx.voice ? 'checked' : ''}></label>
     <label class="setrow"><span>${t('fx.vib')}</span><input type="checkbox" data-fx="vib" ${fx.vib ? 'checked' : ''}></label>
