@@ -183,6 +183,23 @@ function sides(comp) {
   return [cs.find(x => x.homeAway === 'home') || cs[0], cs.find(x => x.homeAway === 'away') || cs[1]];
 }
 
+// notes under a match: ESPN's own notes, neutral grounds, and a home side playing away from its usual stadium
+// (each club's usual ground is learned from the matches this device has already seen)
+const homeVen = (() => { try { return JSON.parse(localStorage.getItem('hven') || '{}'); } catch { return {}; } })();
+let hvenT = 0;
+function matchNote(ev, h) {
+  const comp = ev.competitions?.[0] || {}, v = comp.venue?.fullName || '';
+  const out = (comp.notes || []).map(n => n.headline || n.text).filter(Boolean);
+  if (comp.neutralSite && v) out.push(t('mn.neutral', v));
+  else if (v && h?.team?.id) {
+    const k = h.team.id, seen = homeVen[k] || (homeVen[k] = {});
+    if (!seen[ev.id]) { seen[ev.id] = v; const ids = Object.keys(seen); if (ids.length > 12) delete seen[ids[0]]; clearTimeout(hvenT); hvenT = setTimeout(() => { try { localStorage.setItem('hven', JSON.stringify(homeVen)); } catch {} }, 1500); }
+    const cnt = {}; for (const x of Object.values(seen)) cnt[x] = (cnt[x] || 0) + 1;
+    const [usual, n] = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0] || [];
+    if (usual && n >= 2 && usual !== v) out.push(t('mn.moved', v));
+  }
+  return out.length ? `<div class="mnote">ⓘ ${esc([...new Set(out)].join(' · '))}</div>` : '';
+}
 function matchRow(ev, league, withDate = false, tv = '', tbd = false, hideLg = false) {
   const comp = ev.competitions[0];
   const [h, a] = sides(comp);
@@ -193,7 +210,7 @@ function matchRow(ev, league, withDate = false, tv = '', tbd = false, hideLg = f
   const gf = fx.anim ? goalCheck(`${league}:${ev.id}`, scoreOf(h), scoreOf(a), s.cls === 'live') : (s.cls === 'live' && goalCheck(`${league}:${ev.id}`, scoreOf(h), scoreOf(a), true), null);
   return `<a class="match${gf ? ' goalrow' : ''}" href="#/match/${league}/${ev.id}">${gf ? goalFxHtml((gf.side ? a : h).team.displayName || '', `${scoreOf(h)}–${scoreOf(a)}`, (gf.side ? a : h).team) : ''}
     <div class="mtime ${s.cls}">${withDate ? `<small>${tbd ? '' : dshort(ev.date)}</small>` : ''}${s.cls === 'live' ? liveHtml(s) : tbd ? '' : esc(s.txt ?? hm(ev.date))}</div>
-    <div class="teams">${comp_ ? `<div class="lg">${esc(comp_)}</div>` : ''}${team(h)}${team(a)}</div>
+    <div class="teams">${comp_ ? `<div class="lg">${esc(comp_)}</div>` : ''}${team(h)}${team(a)}${sportOf(league) === 'soccer' ? matchNote(ev, h) : ''}</div>
   </a>`;
 }
 
@@ -259,7 +276,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v47';
 let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
 let actx = null;
 const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
@@ -1331,7 +1348,66 @@ async function runSearch(q) {
     return ok ? `<div class="lrow"><a href="${href}">${inner}</a></div>` : `<div class="lrow"><span class="srow">${inner}</span></div>`;
   };
   const sec = (title, list, kind) => list.length ? `<div class="card"><h2>${title} (${list.length})</h2>${list.map(c => row(c, kind)).join('')}</div>` : '';
-  box.innerHTML = sec(t('search.teams'), teams, 'team') + sec(t('search.players'), players, 'player') || `<div class="empty">${t('search.none')}</div>`;
+  box.innerHTML = sec(t('search.teams'), teams, 'team') + sec(t('search.players'), players, 'player') + '<div id="sleg"></div>' || `<div class="empty">${t('search.none')}</div>`;
+  // former players and legends (Wikidata): everyone ESPN no longer lists
+  const have = new Set(players.map(c => normName(c.displayName)));
+  const leg = (await wdSearch(q).catch(() => [])).filter(x => !have.has(normName(x.label)));
+  if (tok !== searchTok) return;
+  const lb = document.getElementById('sleg');
+  if (lb && leg.length) lb.innerHTML = `<div class="card"><h2>🏛️ ${t('lg.title')} (${leg.length})</h2>${leg.map(x => `<div class="lrow"><a href="#/legend/${x.id}"><span class="srcpic">⚽</span><span class="nm">${esc(x.label)}<small class="hint" style="display:block">${esc(x.description || '')}</small></span><span class="go">›</span></a></div>`).join('')}</div>`;
+  else if (!teams.length && !players.length) box.innerHTML = `<div class="empty">${t('search.none')}</div>`;
+}
+
+// ---- legends / former players: Wikidata (career with years, apps and goals, honours) + the Wikipedia summary
+const WD = 'https://www.wikidata.org/w/api.php?format=json&origin=*&';
+const wdLang = () => (LANG === 'ku' ? 'tr' : LANG);
+async function wdSearch(q) {
+  const j = await get(`${WD}action=wbsearchentities&search=${encodeURIComponent(q)}&language=${wdLang()}&uselang=${wdLang()}&type=item&limit=15`, 3600000);
+  return (j.search || []).filter(x => /footballer|football player|soccer|futbolcu|fußball|футбол|footballeur|futbolista|piłkarz/i.test(x.description || '')).slice(0, 8);
+}
+async function wdLabels(ids) {
+  const out = {};
+  for (let i = 0; i < ids.length; i += 50) {
+    const j = await get(`${WD}action=wbgetentities&ids=${ids.slice(i, i + 50).join('|')}&props=labels&languages=${wdLang()}|en`, 86400000).catch(() => ({}));
+    for (const [id, e] of Object.entries(j.entities || {})) out[id] = e.labels?.[wdLang()]?.value || e.labels?.en?.value || id;
+  }
+  return out;
+}
+const wdYear = s => s ? (/([+-]\d{4})/.exec(s.time || s)?.[1] || '').replace('+', '') : '';
+async function viewLegend(qid) {
+  if (!/^Q\d+$/.test(qid || '')) return `<div class="empty">${t('noInfo')}</div>`;
+  const j = await get(`${WD}action=wbgetentities&ids=${qid}&props=claims|labels|descriptions|sitelinks&languages=${wdLang()}|en`, 86400000);
+  const e = j.entities?.[qid]; if (!e) return `<div class="empty">${t('noInfo')}</div>`;
+  const name = e.labels?.[wdLang()]?.value || e.labels?.en?.value || qid; setTitle(name);
+  const C = p => e.claims?.[p] || [], val = c => c?.mainsnak?.datavalue?.value, qv = c => val(c)?.id, qual = (c, p) => c?.qualifiers?.[p]?.[0]?.datavalue?.value;
+  const teams = C('P54').map(c => ({ id: qv(c), from: wdYear(qual(c, 'P580')), to: wdYear(qual(c, 'P582')), apps: qual(c, 'P1350')?.amount, goals: qual(c, 'P1351')?.amount })).filter(x => x.id);
+  const awards = C('P166').map(c => ({ id: qv(c), y: wdYear(qual(c, 'P585')) })).filter(x => x.id);
+  const ids = [...new Set([...teams.map(x => x.id), ...awards.map(x => x.id), ...['P413', 'P19', 'P27', 'P1532'].flatMap(p => C(p).map(qv))].filter(Boolean))];
+  const [L, sum] = await Promise.all([wdLabels(ids), (async () => {
+    const site = e.sitelinks?.[wdLang() + 'wiki'] || e.sitelinks?.enwiki, host = e.sitelinks?.[wdLang() + 'wiki'] ? wdLang() : 'en';
+    if (!site) return null;
+    return get(`https://${host}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(site.title.replace(/ /g, '_'))}`, 86400000).catch(() => null);
+  })()]);
+  const pic = val(C('P18')[0]), born = val(C('P569')[0])?.time, died = val(C('P570')[0])?.time;
+  const fmtW = s => { const m = /([+-]\d{4})-(\d\d)-(\d\d)/.exec(s || ''); return m ? (m[2] === '00' ? m[1].replace('+', '') : fmtD(new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] || 1)).getTime(), { day: 'numeric', month: 'long', year: 'numeric' })) : ''; };
+  const age = born && !died ? Math.floor((Date.now() - new Date(born.slice(1, 11))) / 31557600000) : 0;
+  const hero = `<div class="card hero plhero"><div class="plpic" style="--pc:${pcol(name)}"><span class="pin_">${esc(initials(name))}</span>${pic ? `<img src="https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(pic)}?width=300" alt="" onerror="this.remove()">` : ''}</div>
+    <div style="font-size:20px;font-weight:700;margin-top:8px">${esc(name)}</div><div class="st">${esc(e.descriptions?.[wdLang()]?.value || e.descriptions?.en?.value || '')}</div></div>`;
+  const info = [['🎂', t('lg.born'), [fmtW(born), age ? t('age', age) : '', L[qv(C('P19')[0])]].filter(Boolean).join(' · ')], ['🕊️', t('lg.died'), fmtW(died)],
+    ['🌍', t('i.country'), [...new Set([...C('P1532'), ...C('P27')].map(c => L[qv(c)]).filter(Boolean))].slice(0, 2).join(', ')], ['🎯', t('lg.pos'), C('P413').map(c => L[qv(c)]).filter(Boolean).join(', ')],
+    ['📏', t('lg.height'), val(C('P2048')[0])?.amount ? Math.round(+val(C('P2048')[0]).amount * (val(C('P2048')[0]).unit?.endsWith('Q11573') ? 100 : 1)) + ' cm' : '']].filter(r => r[2]);
+  const infoCard = `<div class="card">${info.map(([ic, k, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>`;
+  const nat = x => /national|mill[iî]|yaş altı|nationalmannschaft|сборная|sélection|selección|reprezentacja|under-|U-?\d\d/i.test(L[x.id] || '');
+  const tRows = list => list.sort((a, b) => (a.from || '9999').localeCompare(b.from || '9999')).map(x => `<tr><td>${esc(x.from && x.from === x.to ? x.from : (x.from || '?') + '–' + (x.to || ''))}</td><td class="t" style="text-align:left">${esc(L[x.id])}</td><td>${x.apps ? +x.apps : ''}</td><td>${x.goals ? +x.goals : ''}</td></tr>`).join('');
+  const tbl = (title, list) => list.length ? `<div class="card"><h2>${title}</h2><table><thead><tr><th>${t('lg.years')}</th><th style="text-align:left">${t('th.team')}</th><th>${t('lg.apps')}</th><th>${t('lg.goals')}</th></tr></thead><tbody>${tRows(list)}</tbody></table></div>` : '';
+  const club = teams.filter(x => !nat(x)), natT = teams.filter(nat);
+  const tot = club.reduce((s, x) => [s[0] + (+x.apps || 0), s[1] + (+x.goals || 0)], [0, 0]);
+  const aw = {}; for (const a of awards) (aw[a.id] = aw[a.id] || []).push(a.y);
+  const awCard = awards.length ? `<div class="card"><h2>🏆 ${t('lg.awards')} (${awards.length})</h2>${Object.entries(aw).sort((a, b) => b[1].length - a[1].length).map(([id, ys]) => `<div class="inforow"><span class="ic">${ys.length > 1 ? '×' + ys.length : '🏅'}</span><span class="v" style="text-align:left">${esc(L[id])}${ys.filter(Boolean).length ? `<small class="hint" style="display:block">${esc(ys.filter(Boolean).sort().join(', '))}</small>` : ''}</span></div>`).join('')}</div>` : '';
+  const bio = sum?.extract ? `<div class="card"><h2>📖 ${t('lg.bio')}</h2><div class="form-block ptext">${esc(sum.extract)}</div><div class="hint" style="padding:0 14px 12px"><a href="${esc(sum.content_urls?.mobile?.page || sum.content_urls?.desktop?.page || '#')}" target="_blank" rel="noopener">Wikipedia ›</a></div></div>` : '';
+  const sums = tot[0] ? `<div class="card"><div class="statrow"><div><b>${tot[0]}</b><small>${t('lg.apps')}</small></div><div><b>${tot[1]}</b><small>${t('lg.goals')}</small></div><div><b>${club.length}</b><small>${t('lg.clubs')}</small></div><div><b>${awards.length}</b><small>${t('lg.awards')}</small></div></div></div>` : '';
+  const k = 'legend';
+  return hero + sums + seg(k, [t('lg.career'), t('lg.awards'), t('info')]) + pane(k, 0, tbl('🏟️ ' + t('lg.clubs'), club) + tbl('🌍 ' + t('lg.national'), natT) || `<div class="empty">${t('noInfo')}</div>`) + pane(k, 1, awCard || `<div class="empty">${t('noInfo')}</div>`) + pane(k, 2, infoCard + bio) + `<div class="hint" style="text-align:center;padding:8px">${t('lg.src')}</div>`;
 }
 async function viewSearch() {
   setTitle(t('search.title'));
@@ -1401,7 +1477,7 @@ async function viewNotifs() {
   if (!acct) return communityNav('notifs') + authForm();
   let d; try { d = await capi('GET', '/notifs'); } catch (e) { return communityNav('notifs') + `<div class="empty">⚠️ ${esc(errText(e))}</div>`; }
   const txt = i => t('nt.' + i.kind, i.who);
-  const html = d.items.length ? `<div class="card">${d.items.map(i => `<a class="lrow ${i.read ? '' : 'unread'}" href="#/post/${i.post_id}"><span class="nm" style="padding:10px 12px">${esc(txt(i))}<small class="hint" style="display:block">“${esc(i.text || '')}” · ${ago(i.created)}</small></span></a>`).join('')}</div>` : `<div class="empty">${t('nt.empty')}</div>`;
+  const html = d.items.length ? `<div class="card">${d.items.map(i => `<a class="lrow ${i.read ? '' : 'unread'}${/^mod_/.test(i.kind) ? ' modn' : ''}" href="${/^mod_/.test(i.kind) || !i.post_id ? '#/user/' + encodeURIComponent(i.who) : '#/post/' + i.post_id}"><span class="nm" style="padding:10px 12px">${esc(txt(i))}<small class="hint" style="display:block">“${esc(i.text || '')}” · ${ago(i.created)}</small></span></a>`).join('')}</div>` : `<div class="empty">${t('nt.empty')}</div>`;
   if (d.unread) { capi('POST', '/notifs/read').then(() => { notifCount = 0; notifAt = 0; document.querySelectorAll('.nbadge,.tbadge').forEach(x => x.remove()); pollNotifs(true); }).catch(() => {}); }
   return communityNav('notifs') + html;
 }
@@ -1414,7 +1490,7 @@ async function newsFor(q) {
   try {
     const r = await fetch(`${workerBase()}/api/news?q=${encodeURIComponent(q)}&lang=${LANG === 'ku' ? 'tr' : LANG}`);
     const j = await r.json();
-    return (j.items || []).length ? j.items.map(x => ({ headline: x.title, published: x.date, source: x.source, links: { web: { href: x.link } } })) : null;
+    return (j.items || []).length ? j.items.map(x => ({ headline: x.title, published: x.date, source: x.source, desc: x.desc || '', images: x.image ? [{ url: x.image }] : undefined, links: { web: { href: x.link } } })) : null;
   } catch { return null; }
 }
 // when a team or player has no news of its own: Turkey + world headlines instead of an empty tab
@@ -1426,10 +1502,29 @@ async function generalNews() {
   return out;
 }
 const newsOr = async (p, title) => { const n = await p; return n && n.length ? newsCard(n, title) : newsCard(await generalNews().catch(() => []), t('news.general')); };
+// news open inside the app: headline, picture, summary and the publisher's page in a frame (with a button to the original)
+const ART = (() => { try { return new Map(JSON.parse(sessionStorage.getItem('gx-art') || '[]')); } catch { return new Map(); } })();
+function artKey(a) {
+  const k = [...a.u].reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381).toString(36);
+  if (!ART.has(k)) { ART.set(k, a); if (ART.size > 120) ART.delete(ART.keys().next().value); clearTimeout(artKey.t); artKey.t = setTimeout(() => { try { sessionStorage.setItem('gx-art', JSON.stringify([...ART])); } catch {} }, 300); }
+  return k;
+}
+async function viewArticle(k) {
+  const a = ART.get(k);
+  if (!a) return `<div class="empty">${t('news.none')}</div>`;
+  setTitle(a.src || t('news.title'));
+  let host = ''; try { host = new URL(a.u).hostname.replace(/^www\./, ''); } catch {}
+  return `<div class="card artcard">${a.img ? `<img class="artimg" src="${esc(a.img)}" alt="" onerror="this.remove()">` : ''}<div class="form-block"><h1 class="arth">${esc(a.h)}</h1>
+      <div class="hint">${esc([a.src || host, a.d ? fmtD(new Date(a.d).getTime(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(' · '))}</div>
+      ${a.desc ? `<p class="ptext">${esc(a.desc)}</p>` : ''}
+      <a class="btn" href="${esc(a.u)}" target="_blank" rel="noopener">${t('news.open')} ↗</a></div></div>
+    <div class="card artframe"><iframe src="${esc(a.u)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" title="${esc(a.h)}"></iframe><div class="hint" style="padding:8px 14px">${t('news.frameHint')}</div></div>`;
+}
 const newsCard = (items, title) => {
   const rows = (items || []).filter(a => a.headline && (a.links?.web?.href || a.link)).slice(0, 10).map(a => {
     const pic = a.images?.[0]?.url, d = a.published || a.lastModified;
-    return `<a class="newsrow" href="${esc(a.links?.web?.href || a.link)}" target="_blank" rel="noopener">${pic ? `<img loading="lazy" src="${esc(pic)}" alt="" onerror="this.remove()">` : '<span class="nph">📰</span>'}<span><b>${esc(a.headline)}</b><small>${a.source ? esc(a.source) + ' · ' : ''}${d ? esc(fmtD(new Date(d).getTime(), { day: 'numeric', month: 'long' })) : ''}</small></span></a>`;
+    const key = artKey({ h: a.headline, u: a.links?.web?.href || a.link, img: pic || '', src: a.source || '', d: d || '', desc: a.description || a.desc || '' });
+    return `<a class="newsrow" href="#/article/${key}">${pic ? `<img loading="lazy" src="${esc(pic)}" alt="" onerror="this.remove()">` : '<span class="nph">📰</span>'}<span><b>${esc(a.headline)}</b><small>${a.source ? esc(a.source) + ' · ' : ''}${d ? esc(fmtD(new Date(d).getTime(), { day: 'numeric', month: 'long' })) : ''}</small></span></a>`;
   }).join('');
   return rows ? `<div class="card"><h2>📰 ${title}</h2>${rows}</div>` : `<div class="empty">${t('news.none')}</div>`;
 };
@@ -2093,8 +2188,29 @@ async function viewUser(name) {
     ${u.bio ? `<div class="card"><div class="form-block ptext">${esc(u.bio)}</div></div>` : ''}
     ${favListOf(u).length ? `<div class="card"><h2>⭐ ${t('c.favs')}</h2><div class="form-block">${favListOf(u).map(f => favItemHtml(f, false)).join('')}</div></div>` : ''}
     <div class="card"><div class="statrow"><div><b>${u.posts}</b><small>${t('c.topics')}</small></div><div><b>${u.messages}</b><small>${t('c.msgs')}</small></div></div></div>
-    ${own ? `<a class="btn" href="#/profile" style="display:block;text-align:center">${t('c.editProfile')}</a>` : ''}`;
+    ${own ? `<a class="btn" href="#/profile" style="display:block;text-align:center">${t('c.editProfile')}</a>` : ''}${u.mod && !own ? umodCard(u) : ''}`;
 }
+// admins: the member's moderation state and the buttons to change it, right on the profile
+function umodCard(u) {
+  const s = u.mod, muted = s.muted_until > s.now, nm = esc(u.username);
+  const state = s.banned ? `<b class="mst ban">⛔ ${t('u.banned')}</b>` : muted ? `<b class="mst mute">🔇 ${t('u.mutedTill', new Date(s.muted_until * 1000).toLocaleString(LOCALE(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</b>` : `<b class="mst ok">✅ ${t('u.active')}</b>`;
+  const b = (act, label, min = '') => `<button class="btn ghost" data-cact="${act}" data-user="${nm}"${min !== '' ? ` data-min="${min}"` : ''}>${label}</button>`;
+  return `<div class="card umod"><h2>🛡️ ${t('c.mod')}</h2><div class="form-block">${state}<div class="hint">${t('u.strikes', s.strikes)}</div>
+    <div class="modbtns">${b('mute', t('c.mute10'), 10)}${b('mute', t('c.mute60'), 60)}${b('mute', t('c.mute1d'), 1440)}${muted ? b('mute', t('c.unmute'), 0) : ''}${s.banned ? b('unban', t('c.unban')) : b('ban', '⛔ ' + t('c.ban'))}</div></div></div>`;
+}
+// member search: everybody can find a member; admins also see banned / muted members
+async function viewMembers(q = '') {
+  setTitle(t('u.members'));
+  q = decodeURIComponent(q || '');
+  let list = '';
+  if (q.length >= 2) {
+    const d = await capi('GET', '/users?q=' + encodeURIComponent(q)).catch(() => ({ users: [] }));
+    list = d.users.length ? `<div class="card">${d.users.map(u => `<a class="lrow" href="#/user/${encodeURIComponent(u.username)}">${avatar(u, 30)}<span class="nm" style="padding:10px 12px">${esc(u.username)}${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}${u.banned ? ` <b class="mst ban">⛔ ${t('u.banned')}</b>` : u.muted_until > d.now ? ` <b class="mst mute">🔇</b>` : ''}${u.strikes ? ` <small class="hint">⚠️ ${u.strikes}</small>` : ''}</span><span class="go">›</span></a>`).join('')}</div>` : `<div class="empty">${t('u.none')}</div>`;
+  }
+  return communityNav('members') + `<div class="card"><div class="form-block"><input id="mem-q" type="search" autocapitalize="off" placeholder="${esc(t('u.search'))}" value="${esc(q)}"></div></div>` + list;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'mem-q') location.replace('#/members/' + encodeURIComponent(e.target.value.trim())); });
+document.addEventListener('input', e => { if (e.target.id !== 'mem-q') return; clearTimeout(window._memT); window._memT = setTimeout(() => { const v = e.target.value.trim(); if (v.length >= 2 || !v) { history.replaceState(history.state, '', '#/members/' + encodeURIComponent(v)); render(true); } }, 450); });
 
 document.addEventListener('click', async e => {
   const ch = e.target.closest('[data-pw-change]'), dl = e.target.closest('[data-acct-delete]');
@@ -2188,7 +2304,7 @@ document.addEventListener('click', async e => {
 
 // ---------- forum
 let notifCount = 0, notifAt = 0;
-const communityNav = active => `<div class="seg"><a data-replace href="#/forum" class="${active === 'forum' ? 'on' : ''}">💬 ${t('cat.topics')}</a><a data-replace href="#/leaderboard" class="${active === 'lb' ? 'on' : ''}">🏆 ${t('lb.tab')}</a><a data-replace href="#/notifs" class="${active === 'notifs' ? 'on' : ''}">🔔 ${t('nt.title')}${notifCount ? `<i class="nbadge">${notifCount}</i>` : ''}</a></div>`;
+const communityNav = active => `<div class="seg"><a data-replace href="#/forum" class="${active === 'forum' ? 'on' : ''}">💬 ${t('cat.topics')}</a><a data-replace href="#/leaderboard" class="${active === 'lb' ? 'on' : ''}">🏆 ${t('lb.tab')}</a><a data-replace href="#/notifs" class="${active === 'notifs' ? 'on' : ''}">🔔 ${t('nt.title')}${notifCount ? `<i class="nbadge">${notifCount}</i>` : ''}</a><a data-replace href="#/members" class="${active === 'members' ? 'on' : ''}">👥 ${t('u.members')}</a></div>`;
 async function pollNotifs(force) {
   if (!acct || (!force && Date.now() - notifAt < 45000)) return;
   notifAt = Date.now();
@@ -2283,7 +2399,7 @@ const chatMsg = m => {
   const mine = acct && m.username === acct.user.username;
   const acts = acct ? `${delBtn('chat', m.id, m.username)}${modBtns(m.username, 'chat', m.id)}` : '';
   return `<div class="bub ${mine ? 'mine' : ''}" data-id="${m.id}" data-user="${esc(m.username)}" data-kind="chat">${mine ? '' : avatar(m, 30)}
-    <div class="bubbody">${mine ? '' : `<div class="bubhead">${nameHtml(m)}</div>`}<div class="bubtext">${esc(m.body)}</div><div class="bubfoot">${clockOf(m.created)}${likeBtn('chat', m)}</div>${acts ? `<div class="bubact">${acts}</div>` : ''}</div></div>`;
+    <div class="bubbody"><div class="bubhead">${nameHtml(m)}</div><div class="bubtext">${esc(m.body)}</div><div class="bubfoot">${clockOf(m.created)}${likeBtn('chat', m)}</div>${acts ? `<div class="bubact">${acts}</div>` : ''}</div></div>`;
 };
 function chatRows(msgs, prevDay) {
   let html = '', last = prevDay;
@@ -2532,6 +2648,8 @@ document.addEventListener('click', async e => {
       else if (ca.dataset.cact === 'report') { await capi('POST', '/report', { kind, id }); ca.textContent = '✓'; ca.disabled = true; }
       else if (ca.dataset.cact === 'mute') { await capi('POST', '/mod/mute', { username: user, minutes: +ca.dataset.min }); ca.textContent = '✓'; }
       else if (ca.dataset.cact === 'ban') { if (confirm(t('c.confirmBan', user))) { await capi('POST', '/mod/ban', { username: user }); ca.textContent = '✓'; } }
+      else if (ca.dataset.cact === 'unban') { await capi('POST', '/mod/ban', { username: user, banned: false }); ca.textContent = '✓'; }
+      if (ca.closest(".umod")) render();
     } catch (err) { alert(errText(err)); }
     return;
   }
@@ -2557,7 +2675,7 @@ document.addEventListener('click', async e => {
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, members: viewMembers, legend: viewLegend, article: viewArticle, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -2576,7 +2694,7 @@ let renderTok = 0, lastTab = 'matches', lastHash = null;
 // pages come back instantly from memory and refresh in the background; scroll position is restored on back
 const pageCache = new Map(), scrollMap = {};
 let navBack = false;
-const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare'].includes(r);
+const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare', 'members', 'user', 'article'].includes(r);
 const pkey = () => [location.hash, curSport, LANG, acct?.user?.id || 0].join('|');
 try { history.scrollRestoration = 'manual'; } catch {} // the app restores each page's scroll itself
 const TAB_ROUTES = ['matches', 'favs', 'leagues', 'forum', 'profile', 'settings'];
@@ -2596,10 +2714,10 @@ async function render(silent = false) {
   const route = routes[r] ? r : 'matches';
   if (['matches', 'favs', 'leagues', 'settings'].includes(route)) lastTab = route;
   if (['league', 'table'].includes(route)) lastTab = 'leagues';
-  if (['forum', 'post', 'user', 'leaderboard', 'notifs'].includes(route)) lastTab = 'forum';
+  if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members'].includes(route)) lastTab = 'forum';
   if (route === 'profile' || route === 'admin') lastTab = 'profile';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin'].includes(route);
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article'].includes(route);
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   let instant = null, dir = 'same', instY = null;
@@ -2639,8 +2757,14 @@ async function render(silent = false) {
     app.classList.toggle('still', keep); // entrance animation only for real page changes, not for the 5-second refresh
     const y = scrollY;
     const prevChat = (() => { const n = document.querySelector('.chat[data-room]'); return n ? { node: n, focus: n.contains(document.activeElement) } : null; })();
+    // a refresh of the same page keeps what is already on screen: loaded pictures stay visible and filled lazy boxes keep their content until the new one is ready
+    const oldLz = keep ? [...app.querySelectorAll('[data-lz]')].map(el => el.dataset.lzd ? [el.tagName, el.innerHTML] : null) : [];
     const swap = () => {
       app.innerHTML = html;
+      if (keep) {
+        app.querySelectorAll('[data-lz]').forEach((el, i) => { if (!el.dataset.lzd && oldLz[i] && oldLz[i][0] === el.tagName) el.innerHTML = oldLz[i][1]; });
+        app.querySelectorAll('img').forEach(im => { if (im.complete && im.naturalWidth) im.classList.add('ld'); });
+      }
       keepChat(prevChat);
       afterRender();
       const on = document.querySelector('.datebar a.on');
