@@ -441,6 +441,8 @@ const I18N = {
   'set.all': 'Hepsini seç|Select all|Alle wählen|Выбрать все|Hemûyan hilbijêre|Tout sélectionner|Seleccionar todo|Zaznacz wszystko',
   'set.none': 'Hepsini kaldır|Deselect all|Alle abwählen|Снять все|Hemûyan rake|Tout désélectionner|Quitar todo|Odznacz wszystko',
   'news.general': 'Türkiye ve dünyadan haberler|News from Turkey and the world|Nachrichten aus der Türkei und der Welt|Новости Турции и мира|Nûçeyên Tirkiyê û cîhanê|Actus de Turquie et du monde|Noticias de Turquía y del mundo|Wiadomości z Turcji i ze świata',
+  'save': 'Kaydet|Save|Speichern|Сохранить|Tomar bike|Enregistrer|Guardar|Zapisz',
+  'admin.server': 'Bildirim sunucusu|Notification server|Benachrichtigungsserver|Сервер уведомлений|Servera agahdariyan|Serveur de notifications|Servidor de notificaciones|Serwer powiadomień',
   'news.title': 'Haberler|News|News|Новости|Nûçe|Actus|Noticias|Wiadomości',
   'rank.title': 'Puan durumu (her turnuvada)|Standings (every competition)|Tabellenplatz (je Wettbewerb)|Положение в таблицах|Rewşa tabloyê (her pêşbazî)|Classements (par compétition)|Clasificaciones (por competición)|Pozycje w tabelach (każde rozgrywki)',
   'nav.forum': 'Topluluk|Community|Forum|Сообщество|Civak|Communauté|Comunidad|Społeczność',

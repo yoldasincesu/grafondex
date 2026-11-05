@@ -19,7 +19,12 @@ const GROUPS = [
   [['eng.1', 'Premier League', 23, 1], ['esp.1', 'LaLiga', 15, 1], ['ita.1', 'Serie A', 12, 1], ['ger.1', 'Bundesliga', 10, 1], ['fra.1', 'Ligue 1', 9, 1]],
   [['ned.1', 'Eredivisie', 11, 1], ['por.1', 'Liga Portugal', 14, 1], ['bel.1', 'Jupiler Pro League', 6, 1], ['sco.1', 'Scottish Premiership', 45, 1],
     ['aut.1', 'Austrian Bundesliga', 5, 1], ['sui.1', 'Swiss Super League', 17, 0], ['gre.1', 'Super League Greece', 98, 1], ['rus.1', 'Russian Premier League', 106, 1]],
-  [['eng.2', 'EFL Championship', 24, 1], ['esp.2', 'LaLiga 2', 107, 1], ['ita.2', 'Serie B', 99, 1], ['ger.2', '2. Bundesliga', 97, 1], ['fra.2', 'Ligue 2', 96, 1]],
+  [['eng.2', 'EFL Championship', 24, 1], ['esp.2', 'LaLiga 2', 107, 1], ['ita.2', 'Serie B', 99, 1], ['ger.2', '2. Bundesliga', 97, 1], ['fra.2', 'Ligue 2', 96, 1],
+    // more lower divisions: shown only after ESPN answered with a real table for them on this device (see probeLeagues)
+    ['eng.4', 'EFL League Two', 0, 1, 1], ['eng.5', 'National League', 0, 1, 1], ['ger.3', '3. Liga', 0, 1, 1], ['ita.3', 'Serie C', 0, 1, 1], ['fra.3', 'Championnat National', 0, 1, 1], ['esp.3', 'Primera Federación', 0, 1, 1],
+    ['por.2', 'Liga Portugal 2', 0, 1, 1], ['bel.2', 'Challenger Pro League', 0, 1, 1], ['aut.2', '2. Liga (AUT)', 0, 1, 1], ['sui.2', 'Challenge League', 0, 1, 1], ['gre.2', 'Super League 2', 0, 1, 1],
+    ['sco.3', 'Scottish League One', 0, 1, 1], ['sco.4', 'Scottish League Two', 0, 1, 1], ['rus.2', 'Russian First League', 0, 1, 1],
+    ['bra.2', 'Brasileirão Série B', 0, 1, 1], ['arg.2', 'Primera Nacional', 0, 1, 1], ['usa.usl.1', 'USL Championship', 0, 1, 1], ['mex.2', 'Liga de Expansión MX', 0, 1, 1], ['jpn.2', 'J2 League', 0, 1, 1]],
   [['eng.fa', 'FA Cup', 40, 0], ['eng.league_cup', 'Carabao Cup', 41, 0], ['esp.copa_del_rey', 'Copa del Rey', 80, 0],
     ['ita.coppa_italia', 'Coppa Italia', 2192, 0], ['ger.dfb_pokal', 'DFB-Pokal', 2061, 0], ['fra.coupe_de_france', 'Coupe de France', 182, 0]],
   [['fifa.world', 'FIFA World Cup', 4, 1], ['fifa.worldq.uefa', 'World Cup Qualifying – UEFA', 67, 1], ['uefa.euro', 'UEFA EURO', 74, 1],
@@ -37,13 +42,27 @@ const GROUPS = [
   [['uefa.wchampions', 'UEFA Women\'s Champions League', 0, 1], ['eng.w.1', 'Women\'s Super League', 0, 1], ['esp.w.1', 'Liga F', 0, 1], ['fra.w.1', 'Première Ligue', 0, 1], ['ned.w.1', 'Vrouwen Eredivisie', 0, 1],
     ['usa.nwsl', 'NWSL', 0, 1], ['aus.w.1', 'A-League Women', 0, 1], ['mex.w.1', 'Liga MX Femenil', 0, 1], ['eng.w.fa', 'Women\'s FA Cup', 0, 1], ['eng.w.league_cup', 'WSL Players Cup', 0, 1],
     ['fifa.wwc', 'FIFA Women\'s World Cup', 0, 1], ['fifa.wworldq.uefa', 'Women\'s World Cup Qualifying – UEFA', 0, 1], ['uefa.weuro', 'UEFA Women\'s EURO', 0, 1], ['uefa.w.nations', 'UEFA Women\'s Nations League', 0, 1]],
-].map((ls, g) => ls.map(([id, name, logo, table]) => ({ id, name, logo, table: !!table, group: g })));
+].map((ls, g) => ls.map(([id, name, logo, table, probe]) => ({ id, name, logo, table: !!table, group: g, probe: !!probe })));
 // American leagues: their own sport path, league logo and US region
 GROUPS.push([['nba', 'NBA', 'basketball/nba'], ['nhl', 'NHL', 'hockey/nhl'], ['nfl', 'NFL', 'football/nfl']].map(([id, name, path]) => ({
   id, name, path, table: true, region: 'usa', group: GROUPS.length,
   logoUrl: `https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500/${id}.png&w=64&h=64`,
 })));
 const LEAGUES = GROUPS.flat();
+// leagues marked 'probe' are listed only once ESPN has served a standings table for them (checked every 3 days)
+let LOK = (() => { try { return JSON.parse(localStorage.getItem('lok') || '{}'); } catch { return {}; } })();
+const shownL = L => !L.probe || LOK[L.id]?.ok === true;
+async function probeLeagues() {
+  const due = LEAGUES.filter(L => L.probe && !(LOK[L.id] && Date.now() - LOK[L.id].at < 3 * 86400000));
+  if (!due.length) return;
+  await Promise.all(due.map(async L => {
+    let ok = false;
+    try { const r = await fetch(apiSt(L.id) + '/standings'); if (r.ok) { const j = await r.json(); ok = !!(j.children?.length || j.standings?.entries?.length); } } catch { return; } // offline: try again next time
+    LOK[L.id] = { ok, at: Date.now() };
+  }));
+  try { localStorage.setItem('lok', JSON.stringify(LOK)); } catch {}
+  if (/^#\/(leagues|settings)/.test(location.hash) && typeof render === 'function') render();
+}
 // ESPN's numeric league ids, used to sort the "all football" list into our leagues
 const ESPN_NUM = { 'tur.1': 3946, 'uefa.champions': 775, 'uefa.europa': 776, 'uefa.europa.conf': 20296, 'uefa.super_cup': 5462, 'eng.1': 700, 'esp.1': 740, 'ita.1': 730,
   'ger.1': 720, 'fra.1': 710, 'ned.1': 725, 'por.1': 715, 'bel.1': 3901, 'sco.1': 735, 'aut.1': 3907, 'sui.1': 3944, 'gre.1': 3955, 'rus.1': 3939, 'eng.2': 3914, 'esp.2': 3921,
@@ -96,7 +115,7 @@ if (!store.get('womenAdded', false)) { for (const id of ['tur.w.1', 'uefa.wchamp
 if (!store.get('cupAdded', false)) { if (!enabled.includes('tur.cup')) enabled.push('tur.cup'); store.set('leagues', enabled); store.set('cupAdded', true); }
 // every football league is on by default now (all of them come in one request)
 if (!store.get('allSoccerAdded', false)) {
-  for (const L of GROUPS.flat()) if (!L.path && !enabled.includes(L.id)) enabled.push(L.id);
+  for (const L of GROUPS.flat()) if (!L.path && !L.probe && !enabled.includes(L.id)) enabled.push(L.id);
   store.set('leagues', enabled); store.set('allSoccerAdded', true);
 }
 // same for the American leagues
@@ -240,7 +259,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v44';
 let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
 let actx = null;
 const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
@@ -967,7 +986,7 @@ async function wikiPhoto(name, sport) {
 }
 // portrait the server finds (TheSportsDB / Wikidata) for players ESPN has no headshot for
 async function workerPhoto(name, sport, team) {
-  const k = 'w|' + sport + '|' + name; if (wikiMem.has(k)) return wikiMem.get(k);
+  const k = 'w2|' + sport + '|' + name; // w2: server now also checks Transfermarkt, old misses are void if (wikiMem.has(k)) return wikiMem.get(k);
   let u = '';
   try { u = (await get(`${workerBase()}/api/photo?n=${encodeURIComponent(name)}&sp=${encodeURIComponent(sport)}&t=${encodeURIComponent(team || '')}`, 86400000)).url || ''; } catch {}
   wikiMem.set(k, u);
@@ -1482,7 +1501,7 @@ async function viewLeagues() {
   const ofSport = L => sportOf(L.id) === curSport;
   const pins = LEAGUES.filter(L => pinned.includes(L.id) && ofSport(L));
   return sportBar() + (pins.length ? `<div class="card"><h2>${t('pinned')}</h2>${pins.map(row).join('')}</div>` : '')
-    + GROUPS.map((ls, g) => [g, ls.filter(ofSport)]).filter(([, ls]) => ls.length)
+    + GROUPS.map((ls, g) => [g, ls.filter(L => ofSport(L) && shownL(L))]).filter(([, ls]) => ls.length)
       .map(([g, ls]) => `<div class="card"><h2>${curSport === 'soccer' ? t('grp.' + g) : t('cc.usa')}</h2>${ls.map(row).join('')}</div>`).join('');
 }
 
@@ -1917,12 +1936,6 @@ const syncNotify = () => callWorker('/sync', {
 
 function notifyCard() {
   return `<div class="card"><h2>${t('notifs')}</h2>
-    <${isAdminUser() ? 'details class="form-block advsec"' : 'div hidden'}>${isAdminUser() ? '<summary>⚙️ Server / ntfy (admin)</summary>' : ''}
-      <label>${t('serverUrl')}<input id="n-url" type="url" placeholder="https://grafondex.….workers.dev" value="${esc(notif.url)}"></label>
-      <label>${t('secretKey')}<input id="n-key" type="password" autocomplete="off" value="${esc(notif.key)}"></label>
-      <label>${t('topic')}<input id="n-topic" value="${esc(notif.topic)}"></label>
-      <div class="hint">${t('ntfyHint')}</div>
-    </${isAdminUser() ? 'details' : 'div'}>
     <div class="form-block"><button class="btn" id="n-push">${t('pushBtn')}</button><div class="hint">${t('pushHint')}</div></div>
     ${NPREFS.map(k => `<label class="setrow"><span>${t('np.' + k)}</span><input type="checkbox" data-nprefs="${k}" ${notif.prefs[k] ?? true ? 'checked' : ''}></label>`).join('')}
     <div class="form-block"><button class="btn" id="n-save">${t('saveTest')}</button><div class="hint" id="n-msg"></div></div>
@@ -1949,7 +1962,7 @@ async function viewSettings() {
     <div class="form-block"><button class="btn ghost" data-fx-test>▶ ${t('fx.test')}</button></div><div class="hint" style="padding:0 14px 12px">${t('fx.hint')}</div></div>`;
   return langCard + themeCard() + '' + fxCard + soundCard + notifyCard() + otherSportsCards() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
     <div class="selbar"><button class="btn" data-leagues-all="1">${t('set.all')}</button><button class="btn ghost" data-leagues-all="0">${t('set.none')}</button></div>
-    ${GROUPS.map((ls, g) => `<div class="card"><h2>${t('grp.' + g)}<span class="grpact"><button data-grp-all="${g}|1" aria-label="${t('set.all')}">✓</button><button data-grp-all="${g}|0" aria-label="${t('set.none')}">✕</button></span></h2>
+    ${GROUPS.map(ls => ls.filter(shownL)).map((ls, g) => `<div class="card"><h2>${t('grp.' + g)}<span class="grpact"><button data-grp-all="${g}|1" aria-label="${t('set.all')}">✓</button><button data-grp-all="${g}|0" aria-label="${t('set.none')}">✕</button></span></h2>
     ${ls.map(L => `<label class="setrow">${lgIcon(L.id)}<span>${esc(lname(L))}</span><input type="checkbox" data-league-toggle="${L.id}" ${enabled.includes(L.id) ? 'checked' : ''}></label>`).join('')}</div>`).join('')}
     <div class="card about"><img src="logo.png" alt="Grafondex Live Score"><div class="note">${t('about')}</div><div class="note">${t('version')}: ${APP_VERSION}</div></div>`;
 }
@@ -2004,8 +2017,15 @@ const adminLink = () => `<a class="card adminlink" href="#/admin"><span>🛡️<
 async function viewAdmin() {
   setTitle(t('admin.title'));
   if (!isAdminUser()) return `<div class="empty">${t('admin.no')}</div>`;
-  return `<div class="card adminhero"><b>🛡️ ${t('admin.title')}</b><div class="hint">${t('admin.hint')}</div></div>` + modCard();
+  return `<div class="card adminhero"><b>🛡️ ${t('admin.title')}</b><div class="hint">${t('admin.hint')}</div></div>` + modCard() + serverCard();
 }
+// notification server / ntfy: only the admin sees and changes these
+const serverCard = () => `<div class="card"><h2>⚙️ ${t('admin.server')}</h2><div class="form-block">
+      <label>${t('serverUrl')}<input id="n-url" type="url" placeholder="https://grafondex.….workers.dev" value="${esc(notif.url)}"></label>
+      <label>${t('secretKey')}<input id="n-key" type="password" autocomplete="off" value="${esc(notif.key)}"></label>
+      <label>${t('topic')}<input id="n-topic" value="${esc(notif.topic)}"></label>
+      <div class="hint">${t('ntfyHint')}</div>
+      <button class="btn" id="a-save">${t('save')}</button><div class="hint" id="a-msg"></div></div></div>`;
 function modCard() {
   return `<div class="card"><h2>🛡️ ${t('c.mod')}</h2><div class="form-block">
     <label>${t('c.username')}<input id="m-user" autocapitalize="off"></label>
@@ -2558,9 +2578,19 @@ const pageCache = new Map(), scrollMap = {};
 let navBack = false;
 const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare'].includes(r);
 const pkey = () => [location.hash, curSport, LANG, acct?.user?.id || 0].join('|');
-addEventListener('popstate', () => { navBack = true; });
+try { history.scrollRestoration = 'manual'; } catch {} // the app restores each page's scroll itself
+const TAB_ROUTES = ['matches', 'favs', 'leagues', 'forum', 'profile', 'settings'];
 { let tick = 0; addEventListener('scroll', () => { if (tick) return; tick = requestAnimationFrame(() => { tick = 0; scrollMap[location.hash] = scrollY; }); }, { passive: true }); }
 const topbar = on => { const b = document.getElementById('topbar'); if (b) b.classList.toggle('on', on); };
+// which way the user went: every history entry gets a depth number, so 'back' is known for sure
+let curDepth = 0, skelT = 0;
+const jumpY = y => scrollTo({ top: y, behavior: 'instant' }); // page changes jump; html{scroll-behavior:smooth} is for in-page links
+function navDirection() {
+  let d = history.state?.gxd;
+  if (d == null) { d = curDepth + 1; try { history.replaceState({ ...(history.state || {}), gxd: d }, ''); } catch {} }
+  const dir = d < curDepth ? 'back' : d === curDepth ? 'same' : 'fwd';
+  curDepth = d; return dir;
+}
 async function render(silent = false) {
   const [r, ...args] = (location.hash.replace(/^#\/?/, '') || 'matches').split('/');
   const route = routes[r] ? r : 'matches';
@@ -2572,22 +2602,33 @@ async function render(silent = false) {
   $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin'].includes(route);
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
-  let instant = null;
+  let instant = null, dir = 'same', instY = null;
   if (!silent) {
+    dir = navDirection(); navBack = dir === 'back';
+    // bottom-tab switches cross-fade; deeper pages slide in from the side they came from
+    document.documentElement.classList.toggle('vt-back', dir === 'back' && !TAB_ROUTES.includes(route));
+    document.documentElement.classList.toggle('vt-fwd', dir === 'fwd' && !TAB_ROUTES.includes(route));
     // a different match/team opens on its first tab
     if (location.hash !== lastHash) { delete segState.match; delete segState.team; delete segState.player; delete segState.tt; }
     lastHash = location.hash;
     const hit = cacheable(route) && pageCache.get(pkey());
     if (hit && Date.now() - hit.t < 600000) {
-      instant = hit; app.classList.add('still'); app.innerHTML = hit.html; setTitle(hit.title); afterRender();
-      scrollTo(0, navBack ? scrollMap[location.hash] || 0 : 0);
-    } else app.innerHTML = SKELETON;
-    navBack = false;
+      instant = hit; clearTimeout(skelT); app.classList.remove('dim');
+      const toY = instY = dir === 'same' ? scrollY : navBack ? scrollMap[location.hash] || 0 : 0; // 'same': the page re-rendered in place
+      const show = () => { app.classList.add('still'); app.innerHTML = hit.html; setTitle(hit.title); afterRender(); jumpY(toY); };
+      if (dir !== 'same' && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) { try { document.startViewTransition(show); } catch { show(); } } else show();
+    } else {
+      // keep the old page (dimmed) for a moment: a fast answer swaps straight in, without a skeleton flash
+      clearTimeout(skelT); app.classList.add('dim');
+      skelT = setTimeout(() => { if (tok === renderTok) { app.classList.remove('dim'); app.innerHTML = SKELETON; jumpY(0); } }, 260);
+    }
     topbar(true);
   }
   try {
     const html = await routes[route](...args);
     if (tok !== renderTok) return;
+    clearTimeout(skelT); app.classList.remove('dim');
+    const wasBack = navBack; if (!silent) navBack = false;
     topbar(false);
     if (cacheable(route)) { pageCache.set(pkey(), { html, t: Date.now(), title: $('#title').textContent }); if (pageCache.size > 40) pageCache.delete(pageCache.keys().next().value); }
     const sig = location.hash + html.replace(/ data-t="\d+"/g, '');
@@ -2604,13 +2645,14 @@ async function render(silent = false) {
       afterRender();
       const on = document.querySelector('.datebar a.on');
       if (on) on.parentElement.scrollLeft = on.offsetLeft - (on.parentElement.clientWidth - on.offsetWidth) / 2;
-      scrollTo(0, keep ? y : 0);
+      jumpY(keep || dir === 'same' ? (instant && wasBack && instY != null ? Math.max(instY, y) : y) : wasBack ? scrollMap[location.hash] || 0 : 0);
     };
     // a soft cross-fade between pages where the browser supports it
     if (!keep && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) { try { await document.startViewTransition(swap).updateCallbackDone; } catch { swap(); } } else swap();
   } catch (e) {
     topbar(false);
     if (tok !== renderTok || silent) return;
+    clearTimeout(skelT); app.classList.remove('dim'); navBack = false;
     app.innerHTML = `<div class="err">${t('loadFail')}<br><small>${esc(e.message)}</small><br><button onclick="cache.clear();render()">${t('retry')}</button></div>`;
   }
 }
@@ -2682,7 +2724,7 @@ document.addEventListener('click', async e => {
   if (prow && !e.target.closest('a')) { location.hash = prow.dataset.href; return; }
   const la = e.target.closest('[data-leagues-all]'), ga = e.target.closest('[data-grp-all]'), ca = e.target.closest('[data-ctry-all]');
   if (la || ga) {
-    const ids = la ? GROUPS.flat().map(l => l.id) : GROUPS[+ga.dataset.grpAll.split('|')[0]].map(l => l.id), on = (la ? la.dataset.leaguesAll : ga.dataset.grpAll.split('|')[1]) === '1';
+    const ids = (la ? GROUPS.flat() : GROUPS[+ga.dataset.grpAll.split('|')[0]]).filter(shownL).map(l => l.id), on = (la ? la.dataset.leaguesAll : ga.dataset.grpAll.split('|')[1]) === '1';
     enabled = on ? [...new Set([...enabled, ...ids])] : enabled.filter(x => !ids.includes(x)); store.set('leagues', enabled); render(true); return;
   }
   if (ca) { const [sp, mode] = ca.dataset.ctryAll.split('|'); ctryPref[sp] = mode === 'all' ? ['Europe', 'World', ...CTRY_ALL] : []; store.set('ctry', ctryPref); render(true); return; }
@@ -2715,8 +2757,6 @@ document.addEventListener('click', async e => {
   }
   if (e.target.id === 'n-push') {
     const msg = $('#n-msg');
-    notif.url = $('#n-url').value.trim();
-    notif.key = $('#n-key').value.trim();
     if (!/^https:\/\//.test(workerBase())) { msg.textContent = t('needUrlKey'); return; }
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error(t('pushUnsupported'));
@@ -2731,11 +2771,13 @@ document.addEventListener('click', async e => {
     } catch (err) { msg.textContent = '❌ ' + err.message; }
     return;
   }
+  if (e.target.id === 'a-save') { // admin page: notification server settings
+    notif.url = $('#n-url').value.trim(); notif.key = $('#n-key').value.trim(); notif.topic = $('#n-topic').value.trim() || notif.topic;
+    store.set('notify', notif); $('#a-msg').textContent = '✓ ' + t('c.saved');
+    return;
+  }
   if (e.target.id === 'n-save') {
     const msg = $('#n-msg');
-    notif.url = $('#n-url').value.trim();
-    notif.key = $('#n-key').value.trim();
-    notif.topic = $('#n-topic').value.trim();
     NPREFS.forEach(k => { notif.prefs[k] = document.querySelector(`[data-nprefs="${k}"]`).checked; });
     store.set('notify', notif);
     if (!/^https:\/\//.test(workerBase()) || (!notif.key && !notif.push)) { msg.textContent = t('needUrlKey'); return; }
@@ -2866,6 +2908,7 @@ setInterval(() => {
 
 applyStatic();
 render();
+setTimeout(() => probeLeagues().catch(() => {}), 4000);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   // a new version took over (the service worker updates itself): reload once so the page and its scripts match

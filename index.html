@@ -486,6 +486,10 @@ img.logo,.pph img,.newsrow img,.srcpic,.pp img{opacity:0;transition:opacity .28s
 header{view-transition-name:hdr}nav#tabs{view-transition-name:tabs}
 ::view-transition-old(root){animation:vtOut .14s ease both}::view-transition-new(root){animation:vtIn .26s var(--ease) both}
 @keyframes vtOut{to{opacity:0}}@keyframes vtIn{from{opacity:0;transform:translateY(8px)}}
+html.vt-fwd::view-transition-old(root){animation:vtOutL .18s ease both}html.vt-fwd::view-transition-new(root){animation:vtInR .28s var(--ease) both}
+html.vt-back::view-transition-old(root){animation:vtOutR .18s ease both}html.vt-back::view-transition-new(root){animation:vtInL .28s var(--ease) both}
+@keyframes vtOutL{to{opacity:0;transform:translateX(-28px)}}@keyframes vtInR{from{opacity:0;transform:translateX(36px)}}@keyframes vtOutR{to{opacity:0;transform:translateX(28px)}}@keyframes vtInL{from{opacity:0;transform:translateX(-36px)}}
+#app.dim{opacity:.55;transition:opacity .2s ease .08s;pointer-events:none}
 .setrow,.lrow,.match,.board,.tcell,.catchip{transition:background .2s var(--ease),transform .15s var(--ease)}
 .rankrow{display:flex;align-items:center;gap:10px;padding:11px 12px;color:inherit;text-decoration:none}.rankrow .nm{flex:1}.rankrow .rk{text-align:right}.rankrow .rk b{display:block;font-size:17px}.rankrow .rk small{color:var(--muted);font-size:11.5px}
 h2 .lgi{vertical-align:-4px;margin-right:4px}
@@ -649,7 +653,7 @@ a.match .logo.tl{display:inline-flex}
   <a href="#/profile" data-tab="profile"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></i><span>Profil</span></a>
   <a href="#/settings" data-tab="settings"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></i><span>Ayarlar</span></a>
 </nav>
-<script src="i18n.js?v=42"></script>
-<script src="app.js?v=42"></script>
+<script src="i18n.js?v=44"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>
