@@ -1,5 +1,5 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
-const V = 'grafondex-v58';
+const V = 'grafondex-v59';
 const SHELL = ['./', 'index.html', 'i18n.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html',
   'sounds/goal.mp3', 'sounds/whistle_start.mp3', 'sounds/whistle_ht.mp3', 'sounds/whistle_end.mp3', 'sounds/groan.mp3', 'sounds/red.mp3', 'sounds/var.mp3', 'sounds/ding.mp3'];
 

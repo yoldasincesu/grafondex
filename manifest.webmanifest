@@ -42,6 +42,18 @@
   ],
   "shortcuts": [
     {
+      "name": "Favorimin canlı maçı",
+      "short_name": "Canlı maçım",
+      "url": "./#/golive",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
       "name": "Canlı maçlar",
       "short_name": "Maçlar",
       "url": "./#/matches",

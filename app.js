@@ -295,7 +295,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v59';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
@@ -2068,7 +2068,11 @@ async function viewLeaderboard(scope) {
   const byWeek = {}; for (const x of w.weeks || []) (byWeek[x.week] ||= []).push(x);
   const champs = Object.keys(byWeek).length ? `<div class="card"><h2>🏆 ${t('wk.champs')}</h2>${Object.entries(byWeek).sort((a, b) => b[0] - a[0]).slice(0, 8).map(([wk, xs]) => `<div class="wkrow"><small>${esc(fmtD(+wk * 1000, { day: 'numeric', month: 'short' }))} – ${esc(fmtD((+wk + 6 * 86400) * 1000, { day: 'numeric', month: 'short' }))}</small>${xs.sort((a, b) => a.place - b.place).map(x => `<a href="#/user/${encodeURIComponent(x.username)}">${['🥇', '🥈', '🥉'][x.place - 1]} ${esc(x.username)} <small>${x.pts}</small></a>`).join('')}</div>`).join('')}</div>` : '';
   const nextAward = (() => { const n = new Date(); const ist = new Date(n.getTime() + 3 * 3600e3); const dow = (ist.getUTCDay() + 6) % 7; const mon = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate() + (7 - dow)) + 6 * 3600e3; const ms = mon - n.getTime(); const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5); return t('wk.next', d, h); })();
-  return communityNav('lb') + `<div class="card"><div class="form-block"><div class="hint">${t('pred.hint')}</div><div class="wknext">⏳ ${nextAward}</div></div></div>` + chips + board + champs + mine;
+  // an invite link (#/leaderboard/pg/CODE) fills the join box
+  const pgHtml = await pgroupsCard().catch(() => '');
+  const inv = (location.hash.match(/#\/leaderboard\/pg\/([A-Z0-9]{4,8})/i) || [])[1];
+  if (inv) setTimeout(() => { const i = document.getElementById('pg-code'); if (i) { i.value = inv.toUpperCase(); i.scrollIntoView({ block: 'center' }); } }, 300);
+  return communityNav('lb') + `<div class="card"><div class="form-block"><div class="hint">${t('pred.hint')}</div><div class="wknext">⏳ ${nextAward}</div></div></div>` + pgHtml + chips + board + champs + mine;
 }
 async function viewNotifs() {
   setTitle(t('nt.title'));
@@ -2079,6 +2083,64 @@ async function viewNotifs() {
   if (d.unread) { capi('POST', '/notifs/read').then(() => { notifCount = 0; notifAt = 0; document.querySelectorAll('.nbadge,.tbadge').forEach(x => x.remove()); pollNotifs(true); }).catch(() => {}); }
   return communityNav('notifs') + html;
 }
+
+// ---- home-screen shortcut "my team's live match": straight to a favourite's game in progress, else its next one
+async function viewGoLive() {
+  setTitle(t('gl.title'));
+  const fs = favs.filter(f => /^\d+$/.test(String(f.id)) && f.league && f.league !== 'all').slice(0, 12);
+  if (!fs.length) return `<div class="empty">${t('noFavs')}</div>`;
+  const all = await Promise.all(fs.map(f => teamEvents(f.id, f.league).then(te => ({ f, te })).catch(() => null)));
+  const pick = kind => all.filter(Boolean).flatMap(({ f, te }) => (te[kind] || []).map(e => ({ f, e }))).sort((x, y) => new Date(x.e.date) - new Date(y.e.date))[0];
+  const hit = pick('live') || pick('next');
+  if (!hit) return `<div class="empty">${t('gl.none')}</div>`;
+  setTimeout(() => location.replace(`#/match/all/${hit.e.id}`), 0); // 'all': the match page finds the competition itself (league, cup or Europe)
+  return `<div class="empty">⏳ ${esc(hit.e.name || '')}</div>`;
+}
+
+// ---- private prediction groups: create one, share the code, friends join and get their own table
+async function pgroupsCard() {
+  if (!acct) return '';
+  const d = await capi('GET', '/pgroup').catch(() => ({ groups: [] }));
+  return `<div class="card"><h2>👥 ${t('pg.title')}</h2>${(d.groups || []).map(g => `<a class="lrow" href="#/pgroup/${g.id}"><span class="nm" style="padding:10px 12px"><b>${esc(g.name)}</b><small class="hint" style="display:block">${t('pg.members', g.members)}</small></span><span class="go">›</span></a>`).join('') || `<div class="hint" style="padding:0 14px 8px">${t('pg.empty')}</div>`}
+    <div class="form-block pgform"><input id="pg-name" maxlength="40" placeholder="${esc(t('pg.namePh'))}"><button class="btn" data-pg-create>➕ ${t('pg.create')}</button></div>
+    <div class="form-block pgform"><input id="pg-code" maxlength="8" placeholder="${esc(t('pg.codePh'))}" style="text-transform:uppercase"><button class="btn ghost" data-pg-join>🔑 ${t('pg.join')}</button></div><div class="hint" id="pg-msg" style="padding:0 14px 10px"></div></div>`;
+}
+async function viewPGroup(id, scope) {
+  setTitle(t('pg.title'));
+  if (!acct) return authForm();
+  const sc = scope === 'week' ? 'week' : 'all';
+  let d; try { d = await capi('GET', `/pgroup/${encodeURIComponent(id)}?scope=${sc}`); } catch (e) { return `<div class="empty">⚠️ ${esc(errText(e))}</div>`; }
+  setTitle(d.group.name);
+  const link = `${location.href.split('#')[0]}#/leaderboard/pg/${d.group.code}`;
+  const chips = `<div class="chips"><a data-replace href="#/pgroup/${d.group.id}/all" class="${sc === 'all' ? 'on' : ''}">${t('lb.all')}</a><a data-replace href="#/pgroup/${d.group.id}/week" class="${sc === 'week' ? 'on' : ''}">${t('lb.week')}</a></div>`;
+  const board = `<div class="card">${d.board.map((r, i) => `<div class="lbrow"><span class="rk">${i < 3 && r.pts ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>${avatar(r, 30)}<span class="nm">${nameHtml(r)}<small class="hint" style="display:block">${t('pg.line', r.n, r.exact)}</small></span><b class="pts">${r.pts}</b></div>`).join('')}</div>`;
+  const inv = `<div class="card"><div class="form-block"><div class="hint">${t('pg.invite')}</div><div class="pgcode">${esc(d.group.code)}</div><button class="btn" data-pg-share="${esc(d.group.code)}" data-pg-name="${esc(d.group.name)}" data-pg-link="${esc(link)}">📤 ${t('pg.share')}</button></div></div>`;
+  return chips + board + inv + `<div class="form-block"><a class="btn ghost" href="#/leaderboard">🎯 ${t('pg.predictMore')}</a><button class="btn ghost danger" data-pg-leave="${d.group.id}">${d.group.mine ? t('pg.delete') : t('pg.leave')}</button></div>`;
+}
+document.addEventListener('click', async e => {
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); cp.textContent = '✅ ' + t('cal.copied'); } catch {} return; }
+  const msg = () => document.getElementById('pg-msg');
+  if (e.target.closest('[data-pg-create]')) {
+    const name = document.getElementById('pg-name')?.value.trim(); if (!name) return;
+    try { const r = await capi('POST', '/pgroup/create', { name }); location.hash = `#/pgroup/${r.id}`; } catch (err) { if (msg()) msg().textContent = '❌ ' + errText(err); }
+    return;
+  }
+  if (e.target.closest('[data-pg-join]')) {
+    const code = document.getElementById('pg-code')?.value.trim(); if (!code) return;
+    try { const r = await capi('POST', '/pgroup/join', { code }); location.hash = `#/pgroup/${r.id}`; } catch (err) { if (msg()) msg().textContent = '❌ ' + errText(err); }
+    return;
+  }
+  const sh = e.target.closest('[data-pg-share]');
+  if (sh) {
+    const text = t('pg.shareText', sh.dataset.pgName, sh.dataset.pgShare);
+    if (navigator.share) navigator.share({ title: 'Grafondex', text, url: sh.dataset.pgLink }).catch(() => {});
+    else { try { await navigator.clipboard.writeText(text + ' ' + sh.dataset.pgLink); sh.textContent = '✅ ' + t('cal.copied'); } catch {} }
+    return;
+  }
+  const lv = e.target.closest('[data-pg-leave]');
+  if (lv) { if (!confirm(t('pg.leaveQ'))) return; try { await capi('POST', `/pgroup/${lv.dataset.pgLeave}/leave`); location.hash = '#/leaderboard'; } catch {} }
+});
 
 // ---- news cards (ESPN) and player comparison ----
 
@@ -2137,10 +2199,17 @@ async function viewCompare(sport, l1, id1, l2, id2) {
   if (!Bp) return `<div class="empty">${t('pl.noData')}</div>`;
   const pic = (a, lg) => `<div class="cmph"><span class="pph sm" style="--pc:${pcol(a.displayName)}"><span class="pin_">${esc(initials(a.displayName))}</span>${phImg(a.headshot?.href || hsUrl(sport, lg, a.id), a.displayName, sport)}</span><a href="#/player/${esc(sport)}/${esc(lg)}/${esc(a.id)}"><b>${esc(a.displayName)}</b></a><small>${esc(a.team?.displayName || '')}</small></div>`;
   const num = v => parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
-  const row = (label, x, y, cmp) => { const nx = num(x), ny = num(y); const wx = cmp && nx > ny, wy = cmp && ny > nx; return `<tr><td class="${wx ? 'win' : ''}">${esc(x ?? '–')}</td><th>${esc(label)}</th><td class="${wy ? 'win' : ''}">${esc(y ?? '–')}</td></tr>`; };
+  const row = (label, x, y, cmp, force) => { const nx = num(x), ny = num(y); const wx = force ? force === 'l' : cmp && nx > ny, wy = force ? force === 'r' : cmp && ny > nx; return `<tr><td class="${wx ? 'win' : ''}">${esc(x ?? '–')}</td><th>${esc(label)}</th><td class="${wy ? 'win' : ''}">${esc(y ?? '–')}</td></tr>`; };
   const info = [[t('pl.age'), A.age, Bp.age, false], [t('pl.height'), unitH(A.displayHeight), unitH(Bp.displayHeight), false], [t('pl.weight'), unitW(A.displayWeight), unitW(Bp.displayWeight), false], [t('pl.nation'), A.citizenship, Bp.citizenship, false]];
   const sa = A.statsSummary?.statistics || [], sb = Object.fromEntries((Bp.statsSummary?.statistics || []).map(x => [x.name, x]));
   const stats = sa.filter(x => sb[x.name]).map(x => [x.shortDisplayName || x.displayName, x.displayValue, sb[x.name].displayValue, true]);
+  // market value (Transfermarkt through the Worker) for footballers
+  if (sport === 'soccer' && workerBase()) {
+    const mv = p => get(`${workerBase()}/api/value?n=${encodeURIComponent(p.displayName)}&t=${encodeURIComponent(p.team?.displayName || '')}`, 86400000).then(v => v?.v || null).catch(() => null);
+    const [va, vb] = await Promise.all([mv(A), mv(Bp)]);
+    const eur = v => { const m = String(v || '').replace(',', '.').match(/([\d.]+)\s*(bn|mil|m|k|bin|mio)?/i); if (!m) return 0; const u = (m[2] || '').toLowerCase(); return +m[1] * (u === 'bn' ? 1e9 : /^(mil|m|mio)$/.test(u) ? 1e6 : /^(k|bin)$/.test(u) ? 1e3 : 1); };
+    if (va || vb) info.push(['💶 ' + t('cmp.value'), va || '–', vb || '–', false, eur(va) > eur(vb) ? 'l' : eur(vb) > eur(va) ? 'r' : '']);
+  }
   return `<div class="card"><div class="cmphead">${pic(A, l1)}<b class="vs">VS</b>${pic(Bp, l2)}</div>
     <table class="cmp"><tbody>${info.map(r => row(...r)).join('')}${stats.length ? `<tr><th colspan="3" class="sec">${t('pl.current')} · ${esc(A.statsSummary?.displayName || '')}</th></tr>` + stats.map(r => row(...r)).join('') : ''}</tbody></table></div>
     <a class="btn ghost" href="#/compare/${esc(sport)}/${esc(l1)}/${esc(id1)}" style="display:block;text-align:center">${t('cmp.other')}</a>`;
@@ -2178,7 +2247,10 @@ async function viewFavs() {
     return `<div class="card"><h2><span class="tinit">${esc(f.name.slice(0, 1))}</span> <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/tt/${esc(f.league)}/${encodeURIComponent(nm)}/${esc(f.grup || '')}">${t('teamLink')}</a></h2>${[...last, ...next].map(m => tffRow(m, f.league, true)).join('') || `<div class="empty" style="padding:14px">${t('noMatches')}</div>`}</div>`;
   }))).join('');
   const html = (espnF.length ? await favCards(espnF) : '') + tffCards + xHtml + (mineP.length ? await favPlayers(mineP) : '');
-  const calAll = favs.length || xfavs.length ? `<div class="form-block"><button class="btn ghost" data-ics-all>📅 ${t('o.calAll')}</button></div>` : '';
+  // a calendar the phone subscribes to (webcal): it keeps itself up to date with every followed football team's matches
+  const subT = favs.filter(f => sportOf(f.league) === 'soccer' && /^\d+$/.test(String(f.id)) && f.league !== 'all').slice(0, 20).map(f => `${f.league}:${f.id}`);
+  const subUrl = subT.length && workerBase() ? `${workerBase()}/ics?t=${subT.join(',')}&lang=${LANG}` : '';
+  const calAll = favs.length || xfavs.length ? `<div class="card"><h2>📅 ${t('cal.title')}</h2>${subUrl ? `<div class="form-block"><a class="btn" href="${esc(subUrl.replace(/^https:/, 'webcal:'))}">🔄 ${t('cal.sub')}</a><div class="hint">${t('cal.subHint')}</div><button class="btn ghost" data-copy="${esc(subUrl)}">📋 ${t('cal.copy')}</button></div>` : ''}<div class="form-block"><button class="btn ghost" data-ics-all>📥 ${t('o.calAll')}</button></div></div>` : '';
   const rooms = espnF.length ? `<div class="card"><h2>💬 ${t('room.mine')}</h2>${espnF.map(f => `<a class="lrow" href="#/room/${esc(f.league)}/${esc(f.id)}/${encodeURIComponent(f.name)}">${img(f.id, '', f.league)}<span class="nm" style="padding:10px 12px">${esc(f.name)} ${t('room.tab')}</span><span class="go">›</span></a>`).join('')}</div>` : '';
   return sportBar() + rooms + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`) + calAll;
 }
@@ -3642,6 +3714,7 @@ const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
   leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, members: viewMembers, legend: viewLegend, article: viewArticle, dm: viewDm, live: viewLiveScreen, room: viewRoom, games: viewGames, feed: viewFeed, fantasy: viewFantasy, quiz: viewQuiz, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
+  golive: viewGoLive, pgroup: viewPGroup,
 };
 // texts that live in the page shell (bottom bar, header buttons)
 function applyStatic() {
@@ -3661,6 +3734,12 @@ const pageCache = new Map(), scrollMap = {};
 let navBack = false;
 const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare', 'members', 'user', 'article', 'dm', 'feed', 'fantasy', 'quiz'].includes(r);
 const pkey = () => [location.hash, curSport, LANG, acct?.user?.id || 0].join('|');
+// the start pages (match list, favourites) are also kept on the phone: on the next start they appear at once (up to 12 h old)
+// and are replaced by fresh data a moment later
+const DISK_ROUTES = ['matches', 'favs'];
+for (const x of store.get('pcDisk', [])) if (x?.k && x.html && Date.now() - x.t < 12 * 3600e3) pageCache.set(x.k, { ...x, disk: true });
+let diskT = 0;
+const diskSave = (k, html, title) => { clearTimeout(diskT); diskT = setTimeout(() => { if (html.length > 400000) return; const keep = store.get('pcDisk', []).filter(x => x.k !== k).slice(-2); try { localStorage.setItem('pcDisk', JSON.stringify([...keep, { k, html, title, t: Date.now() }])); } catch { store.set('pcDisk', []); } }, 800); };
 try { history.scrollRestoration = 'manual'; } catch {} // the app restores each page's scroll itself
 const TAB_ROUTES = ['matches', 'favs', 'leagues', 'forum', 'profile', 'settings'];
 { let tick = 0; addEventListener('scroll', () => { if (tick) return; tick = requestAnimationFrame(() => { tick = 0; scrollMap[location.hash] = scrollY; }); }, { passive: true }); }
@@ -3679,10 +3758,10 @@ async function render(silent = false) {
   const route = routes[r] ? r : 'matches';
   if (['matches', 'favs', 'leagues', 'settings'].includes(route)) lastTab = route;
   if (['league', 'table'].includes(route)) lastTab = 'leagues';
-  if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members', 'dm', 'games', 'feed', 'fantasy', 'quiz', 'room'].includes(route)) lastTab = 'forum';
+  if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members', 'dm', 'games', 'feed', 'fantasy', 'quiz', 'room', 'pgroup'].includes(route)) lastTab = 'forum';
   if (route === 'profile' || route === 'admin') lastTab = 'profile';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article', 'live', 'room'].includes(route) && !(route === 'settings' && args[0]) && !(route === 'dm' && args[0] && args[0] !== '_req');
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article', 'live', 'room', 'pgroup'].includes(route) && !(route === 'settings' && args[0]) && !(route === 'dm' && args[0] && args[0] !== '_req');
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   let instant = null, dir = 'same', instY = null;
@@ -3695,7 +3774,7 @@ async function render(silent = false) {
     if (location.hash !== lastHash) { delete segState.match; delete segState.team; delete segState.player; delete segState.tt; }
     lastHash = location.hash;
     const hit = cacheable(route) && pageCache.get(pkey());
-    if (hit && Date.now() - hit.t < 600000) {
+    if (hit && Date.now() - hit.t < (hit.disk ? 12 * 3600e3 : 600000)) {
       instant = hit; clearTimeout(skelT); app.classList.remove('dim');
       const toY = instY = dir === 'same' ? scrollY : navBack ? scrollMap[location.hash] || 0 : 0; // 'same': the page re-rendered in place
       const show = () => { app.classList.add('still'); app.innerHTML = hit.html; setTitle(hit.title); afterRender(); jumpY(toY); };
@@ -3713,7 +3792,7 @@ async function render(silent = false) {
     clearTimeout(skelT); app.classList.remove('dim');
     const wasBack = navBack; if (!silent) navBack = false;
     topbar(false);
-    if (cacheable(route)) { pageCache.set(pkey(), { html, t: Date.now(), title: $('#title').textContent }); if (pageCache.size > 40) pageCache.delete(pageCache.keys().next().value); }
+    if (cacheable(route)) { pageCache.set(pkey(), { html, t: Date.now(), title: $('#title').textContent }); if (pageCache.size > 40) pageCache.delete(pageCache.keys().next().value); if (DISK_ROUTES.includes(route) && !args.length) diskSave(pkey(), html, $('#title').textContent); }
     const sig = location.hash + html.replace(/ data-t="\d+"/g, '');
     if (instant && html === instant.html) { lastSig = sig; return; } // nothing changed since the cached copy
     if (silent && sig === lastSig) return;
