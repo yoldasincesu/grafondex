@@ -295,7 +295,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v62';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
@@ -2847,12 +2847,28 @@ const avatar = (m, size = 30) => `<span class="av" style="width:${size}px;height
 const favBadge = m => m.fav_id ? `<img class="favlogo" loading="lazy" src="${logoUrl(m.fav_id, m.fav_league)}" title="${esc(m.fav_name || '')}" alt="" onerror="this.style.display='none'">` : '';
 const nameHtml = m => `<a class="cu ${m.role === 'admin' ? 'adm' : ''}" href="#/user/${encodeURIComponent(m.username)}" style="color:${m.color || hashColor(m.username)}">${esc(m.username)}</a><span class="rkslot" data-rk-u="${esc(m.username)}"></span>${m.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}${favBadge(m)}`;
 
+// is e-mail sign-up switched on in the Worker? (asked once a session; until it answers, the form works the old way)
+let mailCfg = null;
+const mailOnP = () => mailCfg ??= capi('GET', '/mailcfg').then(r => !!r.on).catch(() => false);
+let authMode = 'login';
 function authForm() {
-  return `<div class="card authcard"><h2>${t('c.loginTitle')}</h2><div class="form-block">
-    <label>${t('c.username')}<input id="a-user" autocomplete="username" autocapitalize="off" maxlength="20"></label>
-    <label>${t('c.password')}<input id="a-pass" type="password" autocomplete="current-password" maxlength="100"></label>
-    <div class="authbtns"><button class="btn" data-auth="login">${t('c.login')}</button><button class="btn ghost" data-auth="register">${t('c.register')}</button></div>
-    <div class="hint" id="a-msg">${t('c.passHint')}</div></div></div>
+  mailOnP().then(on => { document.querySelectorAll('[data-mailonly]').forEach(el => { el.hidden = !on || (el.dataset.mailonly === 'reg' && authMode !== 'register'); }); });
+  // two modes: log in (user name OR e-mail + password) and sign up (user name, e-mail, password, then the code from the e-mail)
+  const reg = authMode === 'register';
+  return `<div class="card authcard"><div class="chips authtabs"><button class="${reg ? '' : 'on'}" data-authmode="login">🔑 ${t('c.login')}</button><button class="${reg ? 'on' : ''}" data-authmode="register">✨ ${t('c.register')}</button></div><div class="form-block">
+    <label>${reg ? t('c.username') : t('em.userOrMail')}<input id="a-user" autocomplete="username" autocapitalize="off" maxlength="${reg ? 20 : 120}" placeholder="${reg ? esc(t('em.userPh')) : ''}"></label>
+    <label data-mailonly="reg" hidden>${t('em.email')}<input id="a-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="ornek@mail.com"></label>
+    <label>${t('c.password')}<input id="a-pass" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" maxlength="100"></label>
+    <label id="a-codebox" hidden>${t('em.code')}<input id="a-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></label>
+    <button class="btn" data-auth="${reg ? 'register' : 'login'}">${reg ? t('c.register') : t('c.login')}</button>
+    <div class="hint" id="a-msg">${reg ? t('c.passHint') : ''}</div></div></div>
+    <div class="card" data-mailonly hidden><h2>📧 ${t('em.resetTitle')}</h2><div class="form-block">
+      <div class="hint">${t('em.resetHint')}</div>
+      <input id="e-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="${esc(t('em.email'))}">
+      <button class="btn ghost" data-mailcode="reset">✉️ ${t('em.send')}</button>
+      <input id="e-code" inputmode="numeric" maxlength="6" placeholder="${esc(t('em.code'))}">
+      <input id="e-pass" type="password" autocomplete="new-password" maxlength="100" placeholder="${esc(t('c.newPass'))}">
+      <button class="btn" data-mailreset>${t('c.recover')}</button><div class="hint" id="e-msg"></div></div></div>
     <div class="card"><h2>${t('c.forgot')}</h2><div class="form-block">
       <div class="hint">${t('c.forgotHint')}</div>
       <input id="r-user" autocapitalize="off" maxlength="20" placeholder="${esc(t('c.username'))}">
@@ -2905,6 +2921,10 @@ async function viewProfile() {
   if (!acct) return authForm();
   capi('GET', '/me').then(r => { if (acct && JSON.stringify(r.user) !== JSON.stringify(acct.user)) { acct.user = r.user; store.set('acct', acct); if (location.hash === '#/profile') render(true); } }).catch(() => {});
   const u = acct.user, me = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
+  // e-mail of the account: shown when set, otherwise a box to add one (needed for "forgot password")
+  const mailBox = lazy(capi('GET', '/me').then(r => !r.mail ? '' : r.email
+    ? `<div class="card"><div class="inforow"><span class="ic">📧</span><span class="k">${t('em.email')}</span><span class="v">${esc(r.email)} ✓</span></div></div>`
+    : `<div class="card"><h2>📧 ${t('em.addTitle')}</h2><div class="form-block"><div class="hint">${t('em.addHint')}</div><input id="m-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="${esc(t('em.email'))}"><button class="btn ghost" data-mailcode="attach">✉️ ${t('em.send')}</button><input id="m-code" inputmode="numeric" maxlength="6" placeholder="${esc(t('em.code'))}"><button class="btn" data-mailattach>${t('em.save')}</button><div class="hint" id="m-msg"></div></div></div>`).catch(() => ''));
   const swatches = AVATAR_COLORS.map(c => `<button class="swatch ${c === (u.color || hashColor(u.username)) ? 'on' : ''}" style="background:${c}" data-color="${c}" aria-label="${c}"></button>`).join('');
   const FLs = favListOf(u);
   const favNow = FLs.length ? FLs.map(f => favItemHtml(f, true)).join('') : `<div class="hint">${t('c.noFavs')}</div>`;
@@ -2912,7 +2932,7 @@ async function viewProfile() {
   const has = f => FLs.some(x => x.k === f.k && String(x.id) === String(f.id));
   const mine = [...favs.map(f => ({ k: 't', id: f.id, name: f.name, league: f.league, sport: 'soccer' })), ...pfavs.map(f => ({ k: 'p', id: f.id, name: f.name, league: f.league, sport: f.sport }))].filter(f => !has(f)).slice(0, 20).map(addBtn).join('');
   return `<div class="card profhead">${avatar(me, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
-      <div><a href="#/user/${encodeURIComponent(u.username)}" style="color:var(--accent);font-size:13px">${t('c.publicView')} ›</a></div></div></div>
+      <div><a href="#/user/${encodeURIComponent(u.username)}" style="color:var(--accent);font-size:13px">${t('c.publicView')} ›</a></div></div></div>${mailBox}
     ${u.role === 'admin' ? adminLink() : ''}
     ${await rankCard()}
     ${u.badges?.length ? `<div class="card">${badgeRow(u.badges)}</div>` : ''}
@@ -3379,20 +3399,56 @@ document.addEventListener('click', async e => {
   const send = e.target.closest('.chatsend');
   if (send) { chatSend(send.closest('.chat')); return; }
 
+  const am = e.target.closest('[data-authmode]');
+  if (am) { authMode = am.dataset.authmode; const box = am.closest('.authcard'); if (box) box.outerHTML = authForm().split('</div></div></div>')[0] + '</div></div></div>'; return; }
   const au = e.target.closest('[data-auth]');
   if (au) {
     const kind = au.dataset.auth, msg = document.getElementById('a-msg');
-    if (kind === 'logout') { try { await capi('POST', '/logout'); } catch {} acct = null; store.set('acct', null); dmPriv = null; dmPub = ''; sharedKeys.clear(); render(); return; }
+    if (kind === 'logout') { authMode = 'login'; try { await capi('POST', '/logout'); } catch {} acct = null; store.set('acct', null); dmPriv = null; dmPub = ''; sharedKeys.clear(); render(); return; }
     const username = document.getElementById('a-user').value.trim(), password = document.getElementById('a-pass').value;
+    const email = document.getElementById('a-mail')?.value.trim() || '', code = document.getElementById('a-code')?.value.trim() || '';
+    // sign-up with e-mail: the first tap sends the code, the second (with the code typed in) creates the account
+    if (kind === 'register' && await mailOnP() && !code) {
+      if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) { msg.textContent = '❌ ' + errText({ code: 'bad_username' }); return; }
+      if (password.length < 8) { msg.textContent = '❌ ' + errText({ code: 'bad_password' }); return; }
+      if (!email) { msg.textContent = '❌ ' + t('em.need'); document.getElementById('a-mail')?.focus(); return; }
+      msg.textContent = t('sending');
+      try { await capi('POST', '/email/code', { email, purpose: 'register', lang: LANG }); document.getElementById('a-codebox').hidden = false; document.getElementById('a-code').focus(); msg.textContent = '📩 ' + t('em.sent', email); }
+      catch (err) { msg.textContent = '❌ ' + errText(err); }
+      return;
+    }
     msg.textContent = t('sending');
     try {
-      const r = await capi('POST', '/' + kind, { username, password });
-      acct = { token: r.token, user: r.user }; store.set('acct', acct); render();
+      const r = await capi('POST', '/' + kind, kind === 'register' ? { username, password, email, code } : { username, password });
+      authMode = 'login'; acct = { token: r.token, user: r.user }; store.set('acct', acct); render();
       dmPriv = null; dmSetup(password).catch(() => {}); loadBlocks();
     } catch (err) { msg.textContent = '❌ ' + errText(err); }
     return;
   }
 
+  const mc = e.target.closest('[data-mailcode]');
+  if (mc) {
+    const box = mc.closest('.form-block'), m = box.querySelector('.hint[id]'), email = box.querySelector('input[type=email]').value.trim();
+    if (!email) { m.textContent = '❌ ' + t('em.need'); return; }
+    m.textContent = t('sending'); mc.disabled = true; setTimeout(() => { mc.disabled = false; }, 60000);
+    try { await capi('POST', '/email/code', { email, purpose: mc.dataset.mailcode, lang: LANG }); m.textContent = '📩 ' + t('em.sent', email); box.querySelector('input[inputmode=numeric]')?.focus(); }
+    catch (err) { m.textContent = '❌ ' + errText(err); mc.disabled = false; }
+    return;
+  }
+  if (e.target.closest('[data-mailreset]')) {
+    const m = document.getElementById('e-msg'); m.textContent = t('sending');
+    try {
+      const r = await capi('POST', '/email/reset', { email: document.getElementById('e-mail').value.trim(), code: document.getElementById('e-code').value.trim(), password: document.getElementById('e-pass').value });
+      acct = { token: r.token, user: r.user }; store.set('acct', acct); dmPriv = null; render();
+    } catch (err) { m.textContent = '❌ ' + errText(err); }
+    return;
+  }
+  if (e.target.closest('[data-mailattach]')) {
+    const m = document.getElementById('m-msg'); m.textContent = t('sending');
+    try { await capi('POST', '/email/attach', { email: document.getElementById('m-mail').value.trim(), code: document.getElementById('m-code').value.trim() }); mailCfg = null; render(true); }
+    catch (err) { m.textContent = '❌ ' + errText(err); }
+    return;
+  }
   if (e.target.closest('[data-recover]')) {
     const msg = document.getElementById('r-msg');
     try {
