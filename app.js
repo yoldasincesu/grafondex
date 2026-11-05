@@ -73,7 +73,7 @@ const flagImg = (id, cls = '') => ccOf(id) ? `<img class="flag ${cls}" src="http
 function lgIcon(id, cls = '') {
   const L = leagueOf(id);
   if (L.logoUrl) return `<img class="lgi ${cls}" src="${L.logoUrl}" alt="">`;
-  if (!L.logo) return `<span class="lgi lgflag ${cls}">${flagImg(id) || '🌍'}</span>`;
+  if (!L.logo) return `<span class="lgi lgflag ${cls}" data-lg="${esc(id)}">${flagImg(id) || '🌍'}</span>`;
   return `<img class="lgi ${cls}" src="https://a.espncdn.com/combiner/i?img=/i/leaguelogos/soccer/500/${L.logo}.png&w=64&h=64" alt="" onerror="this.style.visibility='hidden'">`;
 }
 // small "flag + country" line under a league name
@@ -168,7 +168,8 @@ function matchRow(ev, league, withDate = false, tv = '', tbd = false, hideLg = f
   // score sits on the team's own line so long (wrapped) names stay aligned
   const team = c => `<div class="tm ${s.show && c.winner ? 'win' : ''}">${img(c.team.id, '', league)}<span class="tn">${esc(c.team.displayName || c.team.shortDisplayName)}${isFav(c.team.id, league) ? ' <span class="star">★</span>' : ''}</span><b class="ts ${s.cls}">${s.show ? esc(scoreOf(c)) : ''}</b></div>`;
   const comp_ = withDate && !hideLg ? (LEAGUES.some(l => l.id === league) ? lname(leagueOf(league)) : (ev.league?.name || ev.league?.abbreviation)) : '';
-  return `<a class="match" href="#/match/${league}/${ev.id}">
+  const gf = fx.anim ? goalCheck(`${league}:${ev.id}`, scoreOf(h), scoreOf(a), s.cls === 'live') : (s.cls === 'live' && goalCheck(`${league}:${ev.id}`, scoreOf(h), scoreOf(a), true), null);
+  return `<a class="match${gf ? ' goalrow' : ''}" href="#/match/${league}/${ev.id}">${gf ? goalFxHtml((gf.side ? a : h).team.displayName || '', `${scoreOf(h)}–${scoreOf(a)}`, (gf.side ? a : h).team) : ''}
     <div class="mtime ${s.cls}">${withDate ? `<small>${tbd ? '' : dshort(ev.date)}</small>` : ''}${s.cls === 'live' ? liveHtml(s) : tbd ? '' : esc(s.txt ?? hm(ev.date))}</div>
     <div class="teams">${comp_ ? `<div class="lg">${esc(comp_)}</div>` : ''}${team(h)}${team(a)}</div>
   </a>`;
@@ -220,8 +221,116 @@ const sportShown = s => s === 'soccer' || !sportsOn || sportsOn.includes(s);
 const OTHER_SPORTS = ['tennis', 'volley', 'handball', 'baseball', 'f1']; // basketball is one sport: NBA from ESPN, plus European leagues from the server (added below the NBA games)
 let curSport = store.get('sport', 'soccer');
 const scrollBar = inner => `<div class="sbwrap"><button class="sbarr l" data-sbar="-1" aria-label="‹">‹</button>${inner}<button class="sbarr r" data-sbar="1" aria-label="›">›</button></div>`;
-const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${ic}</span>${t(k)}</button>`).join('')}</div>`);
+// clean line icons for the sport tabs (the volleyball emoji looks like a globe on some phones)
+const SPORT_SVG = {
+  soccer: '<circle cx="12" cy="12" r="9"/><path d="M12 8.2l3.4 2.5-1.3 4h-4.2l-1.3-4zM12 8.2V3.2M15.4 10.7l4.6-1.5M14.1 14.7l2.8 3.9M9.9 14.7l-2.8 3.9M8.6 10.7L4 9.2"/>',
+  basketball: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6a9 9 0 0 1 0 12.8M18.4 5.6a9 9 0 0 0 0 12.8"/>',
+  volley: '<circle cx="12" cy="12" r="9"/><path d="M12 3c-1.5 4.5-.5 7.500 3 10M3.600 9.500c4-1.500 8-.5 11.400 3.500M20 15.500c-3.500-1.500-7-.5-9.500 3.200M20.300 8.500c-3 0-5.500 1-7.300 3.500"/>',
+  handball: '<circle cx="12" cy="12" r="9"/><path d="M12 12V3.200M12 12l8.300 2.700M12 12l-8.300 2.700"/><circle cx="12" cy="12" r="2.200"/>',
+  baseball: '<circle cx="12" cy="12" r="9"/><path d="M6.800 4.800c2.500 3.200 2.500 11.200 0 14.400M17.200 4.800c-2.500 3.200-2.500 11.200 0 14.400"/>',
+  f1: '<path d="M5 21V3"/><path d="M5 4h14v9H5z"/><path d="M5 8.500h14M9.500 4v9M14.500 4v9"/>',
+  tennis: '<ellipse cx="10" cy="9.500" rx="5.500" ry="7" transform="rotate(-35 10 9.500)"/><path d="M13.500 14.500L20 21"/>',
+  hockey: '<path d="M5 3l7.500 13.500H19"/><ellipse cx="17" cy="20" rx="4" ry="1.600"/>',
+  football: '<ellipse cx="12" cy="12" rx="9.500" ry="5.500" transform="rotate(-35 12 12)"/><path d="M9.500 9.500l5 5M11.200 10.800l-1.300 1.300M13.200 12.800l-1.300 1.300"/>',
+};
+const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true">${SPORT_SVG[s]}</svg>` : '';
+const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
+// ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
+const APP_VERSION = 'v38';
+let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
+let actx = null;
+const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
+// browsers only allow sound after a first tap: unlock it on the first interaction
+addEventListener('pointerdown', () => audioCtx(), { once: true, passive: true });
+function goalSound() { // crowd roar swelling up + a two-note horn, all synthesised (no files)
+  const c = audioCtx(); if (!c || !fx.sound) return;
+  const t0 = c.currentTime, out = c.createGain(); out.gain.value = 0.9; out.connect(c.destination);
+  const len = c.sampleRate * 3, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = c.createBufferSource(); src.buffer = buf;
+  const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.6;
+  const g = c.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.8);
+  src.connect(bp); bp.connect(g); g.connect(out); src.start(t0); src.stop(t0 + 3);
+  [[392, 0], [523.25, 0.32]].forEach(([f, dt]) => {
+    const o = c.createOscillator(), og = c.createGain(), lp = c.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = f; lp.type = 'lowpass'; lp.frequency.value = 1400;
+    og.gain.setValueAtTime(0.0001, t0 + dt); og.gain.exponentialRampToValueAtTime(0.28, t0 + dt + 0.05); og.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.9);
+    o.connect(lp); lp.connect(og); og.connect(out); o.start(t0 + dt); o.stop(t0 + dt + 1);
+  });
+  goalVoice();
+}
+// a human voice shouting the goal (the phone's own speech voice, in the app language)
+function goalVoice() {
+  if (!fx.voice || !('speechSynthesis' in window)) return;
+  try {
+    const word = { tr: 'Gooooool!', ru: 'Гоооооол!', es: 'Gooooool!', ku: 'Gooooool!' }[LANG] || 'Gooooool!', L = { tr: 'tr-TR', en: 'en-GB', de: 'de-DE', ru: 'ru-RU', fr: 'fr-FR', es: 'es-ES', pl: 'pl-PL', ku: 'tr-TR' }[LANG] || 'en-GB';
+    speechSynthesis.cancel();
+    setTimeout(() => { const u = new SpeechSynthesisUtterance(word); u.lang = L; u.pitch = 1.3; u.rate = 0.62; u.volume = 1; speechSynthesis.speak(u); }, 400);
+  } catch {}
+}
+// one sound per kind of notification, all synthesised: referee whistles for start / half-time / full-time, a buzzer for a red card, sad tones for a cancelled goal …
+function whistle(c, t, dur, f = 2800) {
+  const o = c.createOscillator(), lfo = c.createOscillator(), lg = c.createGain(), g = c.createGain();
+  o.type = 'sine'; o.frequency.value = f; lfo.frequency.value = 38; lg.gain.value = 0.5; lfo.connect(lg); lg.connect(g.gain);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.03); g.gain.setValueAtTime(0.5, t + dur - 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(c.destination); o.start(t); lfo.start(t); o.stop(t + dur + 0.02); lfo.stop(t + dur + 0.02);
+}
+function tone(c, t, f, dur, type = 'sine', vol = 0.3, lp = 0) {
+  const o = c.createOscillator(), g = c.createGain(); o.type = type; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  let n = o; if (lp) { const b = c.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = lp; o.connect(b); n = b; }
+  n.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const SOUND_KINDS = {
+  goal: c => { const t = c.currentTime; tone(c, t, 392, 0.9, 'sawtooth', 0.28, 1400); tone(c, t + 0.32, 523.25, 0.9, 'sawtooth', 0.28, 1400); },
+  cancel: c => { const t = c.currentTime; [[392, 0], [330, 0.28], [262, 0.56]].forEach(([f, d]) => tone(c, t + d, f, 0.5, 'sawtooth', 0.25, 900)); },
+  red: c => { const t = c.currentTime; tone(c, t, 150, 0.55, 'sawtooth', 0.4, 700); tone(c, t + 0.65, 150, 0.35, 'sawtooth', 0.4, 700); },
+  var: c => { const t = c.currentTime; [0, 0.18].forEach(d => tone(c, t + d, 1000, 0.1, 'square', 0.12)); tone(c, t + 0.45, 700, 0.35, 'square', 0.12); },
+  start: c => { const t = c.currentTime; whistle(c, t, 0.9); },
+  ht: c => { const t = c.currentTime; whistle(c, t, 0.35, 2600); whistle(c, t + 0.5, 0.35, 2600); },
+  end: c => { const t = c.currentTime; whistle(c, t, 0.3, 2500); whistle(c, t + 0.45, 0.3, 2500); whistle(c, t + 0.9, 0.9, 2500); },
+  remind: c => { const t = c.currentTime; tone(c, t, 660, 1.2, 'sine', 0.3); tone(c, t, 990, 0.9, 'sine', 0.15); tone(c, t + 0.5, 660, 1.0, 'sine', 0.22); },
+};
+// the same buzz patterns the service worker uses for a closed app, so vibration alone tells the events apart
+const VIB = { goal: [300, 100, 300, 100, 600], cancel: [600, 200, 200], red: [800, 150, 800], var: [100, 80, 100, 80, 100], start: [500], ht: [200, 150, 200], end: [200, 100, 200, 100, 700], remind: [150] };
+const kindVib = kind => { if (fx.vib && navigator.vibrate) try { navigator.vibrate(VIB[kind] || [200, 100, 200]); } catch {} };
+function kindSound(kind) { kindVib(kind); const c = audioCtx(); if (!c || !fx.sound) return; (SOUND_KINDS[kind] || (() => chimeSound()))(c); }
+function chimeSound() { // short two-tone ding for a notification that arrives while the app is open
+  const c = audioCtx(); if (!c || !fx.sound) return;
+  const t0 = c.currentTime;
+  [[880, 0], [1318.5, 0.14]].forEach(([f, dt]) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0 + dt); g.gain.exponentialRampToValueAtTime(0.35, t0 + dt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.7);
+    o.connect(g); g.connect(c.destination); o.start(t0 + dt); o.stop(t0 + dt + 0.75);
+  });
+}
+const goalSeen = new Map(), goalAt = new Map(); // match -> last score / when the animation ends
+function goalCheck(key, h, a, live) {
+  if (!live) { goalSeen.delete(key); return goalAt.get(key)?.until > Date.now() ? goalAt.get(key) : null; }
+  const cur = [parseInt(h) || 0, parseInt(a) || 0], prev = goalSeen.get(key);
+  goalSeen.set(key, cur);
+  if (prev && (cur[0] > prev[0] || cur[1] > prev[1]) && !(goalAt.get(key)?.until > Date.now())) {
+    goalAt.set(key, { until: Date.now() + 9000, side: cur[0] > prev[0] ? 0 : 1 });
+    if (fx.sound) goalSound();
+    if (fx.vib && navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+  }
+  const g = goalAt.get(key);
+  return g && g.until > Date.now() ? g : null;
+}
+// the animation wears the scoring team's colours (ESPN gives each team a main and an alternate colour); too light / too dark ones are adjusted so the white text stays readable
+const fxCol = (hex, d) => {
+  hex = String(hex || '').replace('#', ''); if (!/^[0-9a-f]{6}$/i.test(hex)) return d;
+  const n = parseInt(hex, 16), r = n >> 16, g = n >> 8 & 255, b = n & 255, L = .299 * r + .587 * g + .114 * b;
+  if (L > 170) return `rgb(${r * .6 | 0},${g * .6 | 0},${b * .6 | 0})`;
+  if (L < 40) return `rgb(${Math.min(255, r + 55)},${Math.min(255, g + 55)},${Math.min(255, b + 55)})`;
+  return '#' + hex;
+};
+const FX_DEMO = [['Galatasaray', 'a90432', 'fdb913'], ['Fenerbahçe', '002d72', 'ffed00'], ['Beşiktaş', '222222', 'ffffff'], ['Trabzonspor', '8b1a3d', '1d9ad6'], ['Grafondex FC', '0a8f3c', 'f5c518']];
+let fxDemoN = 0;
+const goalFxHtml = (name, score, team) => `<div class="goalfx" style="--g1:${fxCol(team?.color, '#0a8f3c')};--g2:${fxCol(team?.alternateColor, '#f5c518')}" aria-hidden="true"><i class="gball">⚽</i><b>${t('goalWord')}</b><small>${esc(name)} ${esc(score)}</small><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u></div>`;
+// a push notification arrives while the app is open: play the ding
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data?.type === 'push' && !document.hidden && e.data.kind !== 'goal') kindSound(e.data.kind || ''); });
 // ---- calendar (.ics): one match, or every upcoming match of the favourite teams ----
 const icsEsc = x => String(x || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\r?\n/g, '\\n');
 const icsStamp = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -235,17 +344,75 @@ function icsBuild(list) {
   L.push('END:VCALENDAR');
   return L.join('\r\n');
 }
+// file name per match: "Besiktas-AC-Milan-2026-11-05"
+const icsName = (title, iso) => (String(title || 'mac').replace(/[ıİ]/g, 'i').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'mac') + (iso ? '-' + String(iso).slice(0, 10) : '');
 function icsSave(list, name) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([icsBuild(list)], { type: 'text/calendar;charset=utf-8' }));
   a.download = name + '.ics'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 const calBtn = (title, iso, where, mins = 120) => iso ? `<div class="form-block"><button class="btn ghost" data-ics data-ics-t="${esc(title)}" data-ics-s="${esc(iso)}" data-ics-w="${esc(where || '')}" data-ics-d="${mins}">📅 ${t('o.cal')}</button></div>` : '';
+
+// ---- club badges for sports ESPN has no crests for (volleyball, handball, basketball): TheSportsDB through the Worker; a coloured initials badge until it arrives
+const BSP = { volley: 'volleyball', eubasket: 'basketball', handball: 'handball', basketball: 'basketball' };
+const phLogo = (name, sport, cls = '') => `<span class="logo ph tl ${cls}" data-badge="${esc(name)}" data-bsp="${esc(BSP[sport] || sport || 'volleyball')}" style="--pc:${pcol(name)}">${esc(initials(name))}</span>`;
+const badgeMem = new Map(Object.entries(store.get('badges', {})));
+let badgeChain = Promise.resolve();
+const badgeUrl = (name, sp) => new Promise(res => {
+  const k = sp + '|' + name; if (badgeMem.has(k)) return res(badgeMem.get(k));
+  badgeChain = badgeChain.then(async () => {
+    let u = '';
+    try { u = (await get(`${workerBase()}/api/badge?n=${encodeURIComponent(name)}&sp=${encodeURIComponent(sp)}`, 86400000)).url || ''; } catch { return res(''); }
+    badgeMem.set(k, u); try { store.set('badges', Object.fromEntries([...badgeMem].slice(-500))); } catch {}
+    res(u);
+  });
+});
+function fillBadges() {
+  if (!workerBase()) return;
+  document.querySelectorAll('[data-badge]:not([data-bd])').forEach(el => {
+    el.dataset.bd = '1';
+    badgeUrl(el.dataset.badge, el.dataset.bsp).then(u => {
+      if (!u || !el.isConnected) return;
+      const im = new Image(); im.alt = ''; im.loading = 'lazy';
+      im.onload = () => { if (!el.isConnected) return; if (el.classList.contains('tl')) { im.className = 'logo ' + el.className.replace(/\b(logo|ph|tl)\b/g, '').trim(); el.replaceWith(im); } else { im.style.objectFit = 'contain'; el.appendChild(im); } };
+      im.src = u;
+    });
+  });
+}
+// market value (Transfermarkt, through the Worker), filled in one player at a time and remembered
+const mvMem = new Map(Object.entries(store.get('mval', {})));
+let mvChain = Promise.resolve();
+function fillValues() {
+  if (!workerBase()) return;
+  document.querySelectorAll('[data-mv]:not([data-md])').forEach(el => {
+    el.dataset.md = '1'; const n = el.dataset.mv, tm = el.dataset.mt || '', k = n + '|' + tm;
+    const show = v => { if (v?.v && el.isConnected) { el.textContent = '💶 ' + v.v; if (el.tagName === 'A') { el.href = v.url; el.target = '_blank'; el.rel = 'noopener'; } el.hidden = false; } };
+    if (mvMem.has(k)) return show(mvMem.get(k));
+    mvChain = mvChain.then(async () => {
+      let v; try { v = await get(`${workerBase()}/api/value?n=${encodeURIComponent(n)}&t=${encodeURIComponent(tm)}`, 86400000); } catch { return; }
+      mvMem.set(k, v || {}); try { store.set('mval', Object.fromEntries([...mvMem].slice(-600))); } catch {}
+      show(v);
+    });
+  });
+}
+// league logo when ESPN's table has none: ask ESPN for the league itself, once, and remember it
+const lgMem = new Map(Object.entries(store.get('lglogo', {})));
+function fillLeagueLogos() {
+  document.querySelectorAll('[data-lg]:not([data-ld])').forEach(async el => {
+    el.dataset.ld = '1'; const id = el.dataset.lg;
+    let u = lgMem.get(id);
+    if (u === undefined) {
+      try { const j = await get(core(id), 86400000); u = (j.logos || []).find(x => /default/.test((x.rel || []).join()))?.href || j.logos?.[0]?.href || ''; } catch { return; }
+      lgMem.set(id, u); try { store.set('lglogo', Object.fromEntries(lgMem)); } catch {}
+    }
+    if (u && el.isConnected) { const im = new Image(); im.alt = ''; im.className = 'lgi ' + el.className.replace(/\b(lgi|lgflag)\b/g, '').trim(); im.onload = () => el.isConnected && el.replaceWith(im); im.src = u.replace(/^http:/, 'https:'); }
+  });
+}
 // ---- Matches tab ----
 const otherRow = (it, sport, day) => {
   if (it.kind === 'race') return `<div class="match static race"><div class="mtime ${it.state}">${it.state === 'in' ? '<span class="livedot"></span>' : ''}${esc(it.state === 'pre' ? hm(it.time) : (it.text || ''))}</div>
     <div class="teams"><b class="racetitle">${esc(I18N['f1.' + it.code] ? t('f1.' + it.code) : it.title)}</b>${it.results.length ? `<ol class="results">${it.results.map(r => `<li><i>${esc(r.pos)}</i>${esc(r.name)}<small>${esc(r.team)}</small></li>`).join('')}</ol>` : ''}</div></div>`;
-  const team = x => `<div class="tm ${it.state === 'post' && x.winner ? 'win' : ''}">${x.logo ? `<img class="logo" loading="lazy" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : '<span class="logo ph"></span>'}<span class="tn">${esc(x.name)}</span>
+  const team = x => `<div class="tm ${it.state === 'post' && x.winner ? 'win' : ''}">${x.logo ? `<img class="logo" loading="lazy" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : phLogo(x.name, sport)}<span class="tn">${esc(x.name)}</span>
     <b class="ts ${it.state}">${x.sets?.length ? `<span class="setline">${x.sets.map(v => `<i>${esc(v)}</i>`).join('')}</span>` : ''}${esc(x.score)}</b></div>`;
   return `<a class="match" href="#/game/${esc(sport)}/${esc(it.id)}/${esc(day)}"><div class="mtime ${it.state}">${it.state === 'in' ? '<span class="livedot"></span>' : ''}${esc(it.state === 'pre' ? hm(it.time) : (it.text || ''))}${it.round ? `<small>${esc(it.round)}</small>` : ''}</div>
     <div class="teams">${team(it.home)}${team(it.away)}</div></a>`;
@@ -263,7 +430,7 @@ function otherTableHtml(g, hl, sport) {
   const norm = s => String(s || '').toLocaleLowerCase('tr');
   const body = g.rows.map(r => {
     const z = g.zones.find(z => r.pos >= z.from && r.pos <= z.to), me = hl && (norm(r.name) === norm(hl) || norm(r.name).includes(norm(hl)) || norm(hl).includes(norm(r.name)));
-    return `<tr class="${me ? 'fav' : ''}"><td class="r" style="border-left-color:${z ? ZC[z.c] : 'transparent'}">${esc(r.pos)}</td><td class="tmc" style="color:var(--text)">${r.logo ? `<img class="logo" src="${esc(r.logo)}" alt="" onerror="this.remove()"> ` : ''}<a href="#/tx/${esc(sport)}/${encodeURIComponent(r.name)}" style="color:inherit">${esc(r.name)}</a></td><td>${n(r.o)}</td><td>${n(r.g)}</td>${hasD ? `<td>${n(r.d)}</td>` : ''}<td>${n(r.m)}</td>${r.f != null ? `<td>${n(r.f)}–${n(r.a)}</td>` : ''}${hasP ? `<td><b>${n(r.p)}</b></td>` : ''}</tr>`;
+    return `<tr class="${me ? 'fav' : ''}"><td class="r" style="border-left-color:${z ? ZC[z.c] : 'transparent'}">${esc(r.pos)}</td><td class="tmc" style="color:var(--text)">${r.logo ? `<img class="logo" src="${esc(r.logo)}" alt="" onerror="this.remove()"> ` : phLogo(r.name, sport) + ' '}<a href="#/tx/${esc(sport)}/${encodeURIComponent(r.name)}" style="color:inherit">${esc(r.name)}</a></td><td>${n(r.o)}</td><td>${n(r.g)}</td>${hasD ? `<td>${n(r.d)}</td>` : ''}<td>${n(r.m)}</td>${r.f != null ? `<td>${n(r.f)}–${n(r.a)}</td>` : ''}${hasP ? `<td><b>${n(r.p)}</b></td>` : ''}</tr>`;
   }).join('');
   const hasF = g.rows.some(r => r.f != null);
   const legend = g.zones.map(z => `<span style="margin-right:12px"><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ZC[z.c]};margin-right:5px"></i>${t('z.' + z.l)}</span>`).join('');
@@ -284,7 +451,7 @@ async function viewTeamX(sport, rawName) {
   const found = tabs.map(({ x, d }) => { for (const g of d?.groups || []) { const r = g.rows.find(me); if (r) return { x, d, g, r }; } return null; }).filter(Boolean);
   const logo = found.map(f => f.r.logo).find(Boolean);
   const isFavX = xfavs.some(f => f.sport === sport && f.name === name);
-  const hero = `<div class="card hero plhero"><div class="plpic" style="--pc:${pcol(name)}"><span class="pin_">${esc(initials(name))}</span>${logo ? `<img src="${esc(logo)}" alt="" style="object-fit:contain" onerror="this.remove()">` : ''}</div>
+  const hero = `<div class="card hero plhero"><div class="plpic" style="--pc:${pcol(name)}" ${logo ? '' : `data-badge="${esc(name)}" data-bsp="${esc(BSP[sport] || sport)}"`}><span class="pin_">${esc(initials(name))}</span>${logo ? `<img src="${esc(logo)}" alt="" style="object-fit:contain" onerror="this.remove()">` : ''}</div>
     <div style="font-size:21px;font-weight:700;margin-top:8px">${esc(name)}</div>
     <div class="st">${found.map(f => `<a href="#/ostand/${encodeURIComponent(f.x.src)}/${encodeURIComponent(name)}" class="chip">${esc(f.d.title || f.x.title)} · ${t('o.rank', f.r.pos)}</a>`).join(' ') || ''}</div>
     <button class="favbtn ${isFavX ? 'on' : ''}" data-xfav="${esc(sport)}|${esc(name)}">${isFavX ? t('inFavs') : t('addFav')}</button></div>`;
@@ -301,8 +468,28 @@ async function viewTeamX(sport, rawName) {
     const coach = (Array.isArray(ppl) ? ppl : ppl.data || []).find(p => p.type === 'E');
     if (pl.length) squad = `<div class="card"><h2>${t('squad')}</h2>${coach ? `<div class="inforow"><span class="k">${t('hb.coach')}</span><span class="v">${esc(euName(coach.person.alias || coach.person.name))}</span></div>` : ''}${pl.sort((a, b) => (+a.dorsal || 99) - (+b.dorsal || 99)).map(p => `<a class="pl" href="#/player/basketball/${esc(comp)}/${esc(p.person.code)}"><span class="no">${esc(p.dorsal || '')}</span><span class="nm">${esc(euName(p.person.alias || p.person.name))}</span><span class="ps">${esc(p.positionName || '')}</span></a>`).join('')}</div>`;
   }
+  if (sport === 'volley') { // one squad per gender the club plays in (the same club name can have a women's and a men's team)
+    const gs = [...new Set(found.map(f => vGender(f.x.src + ' ' + (f.d.title || f.x.title))))];
+    squad = (await Promise.all((gs.length ? gs : [vGender(name)]).map(g => vSquad(name, g)))).map(vHtml).join('');
+  }
   const empty = !tables && !gHtml && !squad ? `<div class="empty">${t('o.noTable')}</div>` : '';
-  return hero + tables + gHtml + squad + empty;
+  return hero + tables + squad + gHtml + empty;
+}
+// volleyball squads and profiles (Volleybox through the Worker): women's clubs on women.volleybox.net, men's on volleybox.net
+const vGender = s => (/sultan|kad[ıi]n|women|\bw\b|\(w\)|bayan/i.test(String(s || '')) ? 'w' : 'm');
+const vSquad = (name, g) => get(`${workerBase()}/vteam?name=${encodeURIComponent(name)}&g=${g}`, 6 * 3600e3).then(d => (d?.players?.length ? { ...d, g } : null)).catch(() => null);
+const vCard = (p, g) => `<a class="pcard" href="#/vplayer/${g}/${esc(p.slug)}"><div class="pph" style="--pc:${pcol(p.name)}"><span class="pin_">${esc(initials(p.name))}</span>${p.photo ? `<img loading="lazy" src="${esc(p.photo)}" alt="" onerror="this.remove()">` : ''}${p.no ? `<i class="pno">${esc(p.no)}</i>` : ''}</div>
+  <b class="pnm">${esc(p.name)}</b><small>${esc([p.pos, p.h].filter(Boolean).join(' · '))}</small></a>`;
+const vSeason = y => (+y ? `${+y - 1}/${String(y).slice(2)}` : '');
+const vHtml = d => d ? `<div class="card"><h2>${d.team.logo ? `<img class="logo" src="${esc(d.team.logo)}" alt="" onerror="this.remove()"> ` : ''}${esc(d.team.name)} · ${t('squad')} ${esc(vSeason(d.season))}</h2>${pgrid(d.players.map(p => vCard(p, d.g)))}<div class="hint" style="padding:0 14px 10px">${t('v.src')}</div></div>` : '';
+async function viewVPlayer(g, slug) {
+  const p = await get(`${workerBase()}/vplayer?g=${encodeURIComponent(g)}&slug=${encodeURIComponent(slug)}`, 3600e3).catch(() => null);
+  if (!p || p.error || !p.name) return `<div class="empty">${t('pl.noData')}</div>`;
+  setTitle(p.name);
+  const hero = `<div class="card hero plhero"><div class="plpic" style="--pc:${pcol(p.name)}"><span class="pin_">${esc(initials(p.name))}</span>${p.photo ? `<img loading="lazy" src="${esc(p.photo)}" alt="" onerror="this.remove()">` : ''}</div>
+    <div style="font-size:21px;font-weight:700;margin-top:8px">${esc(p.name)}</div><div class="st">${esc(p.pos || '')}</div></div>`;
+  const rows = [['🌍', t('pl.nation'), p.nat], ['🎂', t('pl.born'), p.born], ['📏', t('pl.height'), p.h], ['⚖️', t('pl.weight'), p.w], ['🏐', t('v.spike'), p.spike], ['🧱', t('v.block'), p.block]].filter(r => r[2]);
+  return hero + (rows.length ? `<div class="card">${rows.map(([ic, k, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>` : '') + `<p class="note"><a href="${esc(p.url)}" target="_blank" rel="noopener">${t('v.src')} ›</a></p>`;
 }
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 async function viewGame(sport, id, day) {
@@ -312,13 +499,13 @@ async function viewGame(sport, id, day) {
   if (!it) return `<div class="empty">${t('noMatches')}</div>`;
   const tvTr = await tvList(trDay(it.time)).then(l => tvFor(l, it.time, it.home.name, it.away.name, '')).catch(() => '');
   const show = it.state !== 'pre';
-  const side = x => `<div class="side">${x.logo ? `<img class="logo big" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : '<span class="logo big ph"></span>'}<span>${x.pid ? `<a class="plink" href="#/player/tennis/${esc(x.tour)}/${esc(x.pid)}">${esc(x.name)}</a>` : !['eubasket', 'volley', 'handball'].includes(sport) ? esc(x.name) : `<a class="plink" href="#/tx/${esc(srcSport(sport))}/${encodeURIComponent(x.name)}">${esc(x.name)}</a>`}</span></div>`;
+  const side = x => `<div class="side">${x.logo ? `<img class="logo big" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : phLogo(x.name, sport, 'big')}<span>${x.pid ? `<a class="plink" href="#/player/tennis/${esc(x.tour)}/${esc(x.pid)}">${esc(x.name)}</a>` : !['eubasket', 'volley', 'handball'].includes(sport) ? esc(x.name) : `<a class="plink" href="#/tx/${esc(srcSport(sport))}/${encodeURIComponent(x.name)}">${esc(x.name)}</a>`}</span></div>`;
   const hero = `<div class="card hero"><div class="row">${side(it.home)}<div class="mid"><div class="sc">${show ? `${esc(it.home.score)} - ${esc(it.away.score)}` : esc(hm(it.time))}</div>
     <div class="st ${it.state}">${it.state === 'pre' ? dshort(it.time) : it.state === 'in' ? `<span class="livetag">${t('live')}</span> ${esc(it.text || '')}` : esc(it.text || t('st.FT'))}</div>${tvTr ? `<div class="tvtag">📺 ${esc(tvTr)}</div>` : ''}</div>${side(it.away)}</div></div>`;
   if (sport === 'handball' && String(id).startsWith('thf-')) return viewThfGame(it, id, grp, hero, tvTr);
   // score by set / quarter / period when the source has it
   const hs = it.home.sets || [], as = it.away.sets || [], n = Math.max(hs.length, as.length);
-  const row = (x, s) => `<tr><td class="t">${x.logo ? `<img class="logo" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'"> ` : ''}${esc(x.name)}</td>${Array.from({ length: n }, (_, k) => `<td>${esc(s[k] ?? '')}</td>`).join('')}<td class="p">${esc(x.score)}</td></tr>`;
+  const row = (x, s) => `<tr><td class="t">${x.logo ? `<img class="logo" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'"> ` : phLogo(x.name, sport) + ' '}${esc(x.name)}</td>${Array.from({ length: n }, (_, k) => `<td>${esc(s[k] ?? '')}</td>`).join('')}<td class="p">${esc(x.score)}</td></tr>`;
   const perHtml = show && n ? `<div class="card"><table class="lines"><thead><tr><th></th>${Array.from({ length: n }, (_, k) => `<th>${k + 1}</th>`).join('')}<th>${t('total')}</th></tr></thead><tbody>${row(it.home, hs)}${row(it.away, as)}</tbody></table></div>`
     : `<div class="empty">${it.state === 'pre' ? t('notStarted') : t('noStats')}</div>`;
   const rows = [['🏆', t('competition'), grp?.name], ['🔢', t('round'), it.round], ['📅', t('date'), new Date(it.time).toLocaleString(LOCALE(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }) + ' (TSİ)'], ['🏟️', t('venue'), it.venue], ['📺', t('tvTr'), tvTr || it.tv]].filter(r => r[2]);
@@ -335,6 +522,7 @@ async function viewGame(sport, id, day) {
     };
     boxHtml = tbl(bs?.local, it.home.name) + tbl(bs?.road, it.away.name);
   }
+  if (sport === 'volley') { const g = vGender(grp?.name), sq = (await Promise.all([it.home.name, it.away.name].map(n => vSquad(n, g)))).map(vHtml).join(''); if (sq) boxHtml = sq; }
   const T = [[t('score'), perHtml], ...(boxHtml ? [[t('search.players'), boxHtml]] : []), [t('info'), infoHtml + calBtn(`${it.home.name} – ${it.away.name}`, it.time, [it.venue, grp?.name].filter(Boolean).join(', '))], [t('c.chat'), chatHtml(`m-${String(sport).replace(/\W/g, '')}-${String(id).replace(/\W/g, '')}`)]];
   return hero + tabsHtml('match', T, it.state === 'pre', [T.length - 2, T.length - 1]);
 }
@@ -508,7 +696,9 @@ async function viewMatch(league, id) {
   const comp = j.header.competitions[0];
   const [h, a] = sides(comp);
   const s = status(comp.status);
-  const sideHtml = c => `<div class="side"><a href="#/team/${league}/${c.team.id}">${img(c.team.id, 'big', league)}<span>${esc(c.team.displayName)}</span></a>${formHtml(c.form)}${favStar(c.team.id, c.team.displayName, league)}</div>`;
+  const rk = await leagueRanks(league).catch(() => new Map());
+  const rankChip = c => { const r = rk.get(String(c.team.id)); return r ? `<a class="rkchip" href="#/league/${esc(league)}/puan">${t('o.rank', r.rank)}</a>` : ''; };
+  const sideHtml = c => `<div class="side"><a href="#/team/${league}/${c.team.id}">${img(c.team.id, 'big', league)}<span>${esc(c.team.displayName)}</span></a>${rankChip(c)}${formHtml(c.form)}${favStar(c.team.id, c.team.displayName, league)}</div>`;
   let html = `<div class="card hero"><div class="row">${sideHtml(h)}
     <div class="mid"><div class="sc">${s.show ? `${esc(scoreOf(h))} - ${esc(scoreOf(a))}` : s.cls === 'ppd' ? '– : –' : esc(hm(comp.date))}</div>
     <div class="st ${s.cls}">${s.cls === 'pre' ? dshort(comp.date) : s.cls === 'live' ? `<span class="livetag">${t('live')}</span> ${liveHtml(s)}` : esc(s.txt)}</div><!--tv--></div>
@@ -568,10 +758,10 @@ async function viewMatch(league, id) {
     return `<div class="card"><h2>${img(r.team.id)} ${esc(r.team.displayName)}${r.formation ? ` · ${esc(r.formation)}` : ''}</h2><div style="padding:0 10px 12px">${pitchHtml(starters, r.formation, league, { marks, color: r.team.color, team: r.team.displayName })}</div></div>
       <div class="card"><h2>${t('subs')}</h2>${subs.map(pl).join('')}</div>`;
   };
-  let luHtml = rosters.map(lineup).join('');
+  let luHtml = luSwitch(rosters.map(r => [r.team.displayName, lineup(r), img(r.team.id, '', league)]));
   // before kick-off ESPN often has no line-up yet: show each side's likely eleven (its last line-up) instead
   if (!luHtml && (s.cls === 'pre' || s.cls === 'ppd')) {
-    luHtml = (await Promise.all([h, a].map(async c => { const te = await teamEvents(c.team.id, league).catch(() => null); return te ? predictedXi(c.team.id, te.past, c.team.displayName).catch(() => '') : ''; }))).join('');
+    luHtml = luSwitch((await Promise.all([h, a].map(async c => { const te = await teamEvents(c.team.id, league).catch(() => null); return [c.team.displayName, te ? await predictedXi(c.team.id, te.past, c.team.displayName).catch(() => '') : '', img(c.team.id, '', league)]; }))).filter(x => x[1]));
   }
   if (!luHtml) luHtml = `<div class="empty">${t('noLineups')}</div>`;
 
@@ -596,14 +786,19 @@ async function viewMatch(league, id) {
   const k = 'match', mkey = `${league}:${id}`;
   const threadHtml = await matchThreadCard(mkey, h, a).catch(() => '');
   if (threadHtml) html = html.replace('<!--tv-->', '<!--tv-->') + threadHtml;
-  const [mvHtml, prHtml] = await Promise.all([motmHtml(mkey, rosters, s).catch(() => ''), predictHtml(mkey, comp, s, h, a).catch(() => '')]);
+  const [mvHtml, prHtml] = await Promise.all([motmHtml(mkey, rosters, s).catch(() => ''), predictHtml(mkey, comp, s, h, a, probFrom(j)).catch(() => '')]);
   const T = { ev: [t('events'), evHtml], st: [t('stats'), stHtml], lu: [t('lineups'), luHtml], rc: [t('recent'), recentHtml(j, [h, a])], inf: [t('info'), infoHtml + calBtn(`${h.team.displayName} – ${a.team.displayName}`, comp.date, [gi.venue?.fullName, lname(leagueOf(league))].filter(Boolean).join(', '))],
     ch: [t('c.chat'), chatHtml('m-soccer-' + id)], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml] };
-  const order = s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'lu', 'rc', 'pr', 'ch', 'ev', 'st', 'mv'] : ['ev', 'st', 'lu', 'rc', 'inf', 'ch', 'mv', 'pr'];
+  if (rk.size) T.tb = [t('o.standings'), await standingsHtml(league).catch(() => `<div class="empty">${t('noTable')}</div>`)];
+  const order = (s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'lu', 'rc', 'pr', 'tb', 'ch', 'ev', 'st', 'mv'] : ['ev', 'st', 'lu', 'tb', 'rc', 'inf', 'ch', 'mv', 'pr']).filter(x => T[x]);
   html += seg(k, order.map(x => T[x][0])) + order.map((x, i) => pane(k, i, T[x][1])).join('');
   return html;
 }
 
+// two line-ups: one button per team, one pitch at a time (the choice survives the 5-second refresh)
+let luSel = 0;
+const luSwitch = items => items.length < 2 ? items.map(x => x[1]).join('') : `<div class="lusw">${items.map(([n, , lg], i) => `<button class="${i === luSel ? 'on' : ''}" data-lu="${i}">${lg || ''}<span>${esc(n)}</span></button>`).join('')}</div>`
+  + items.map(([, h], i) => `<div class="luteam" data-luteam="${i}" ${i === luSel ? '' : 'hidden'}>${h}</div>`).join('');
 // ---- NBA / NHL / NFL game page: score by period, team stats, top players, info ----
 async function viewUsMatch(league, id) {
   setTitle(lname(leagueOf(league)));
@@ -775,7 +970,7 @@ async function workerPhoto(name, sport, team) {
 function photoFb(img) {
   const st = +img.dataset.st || 0; img.dataset.st = st + 1;
   const n = img.dataset.n, sp = img.dataset.sp || 'soccer';
-  const steps = [() => workerPhoto(n, sp, img.dataset.tm), () => wikiPhoto(n, sp)];
+  const steps = [() => workerPhoto(n, sp, img.dataset.tm)]; // portraits only: Wikipedia pictures are often match photos in another club's kit
   if (n && steps[st]) steps[st]().then(u => { if (u && u !== img.src) img.src = u; else photoFb(img); }); else img.remove();
 }
 window.photoFb = photoFb;
@@ -790,7 +985,7 @@ function playerCard(x, sub, sport = 'soccer', league = 'all', team = '') {
   const src = x.headshot?.href || (sport === 'soccer' && x.id ? hsUrl('soccer', league, x.id) : '');
   const pic = src ? phImg(src, x.displayName, sport, team) : '';
   const card = `<a class="pcard p-${posKey(x)}" href="#/player/${esc(sport)}/${esc(league)}/${esc(x.id)}"><div class="pph" style="--pc:${pcol(x.displayName)}"><span class="pin_">${esc(initials(x.displayName))}</span>${pic}${x.jersey ? `<i class="pno">${esc(x.jersey)}</i>` : ''}</div>
-    <b class="pnm">${esc(x.displayName)}</b><small>${esc(sub)}</small></a>`;
+    <b class="pnm">${esc(x.displayName)}</b><small>${esc(sub)}</small>${sport === 'soccer' && team ? `<small class="mval" data-mv="${esc(x.displayName)}" data-mt="${esc(team)}"></small>` : ''}</a>`;
   return `<div class="pcwrap">${card}${pfavBtn({ id: x.id, name: x.displayName, sport, league, team })}</div>`;
 }
 const pgrid = list => `<div class="pgrid">${list.join('')}</div>`;
@@ -829,11 +1024,14 @@ function pitchHtml(starters, formation, league, opt = {}) {
 }
 // the likely starting eleven of a team = its latest line-up
 async function predictedXi(id, past, teamName = '') {
-  const ev = past?.[0]; if (!ev) return '';
-  const j = await get(`${SITE}soccer/all/summary?event=${ev.id}`, 600000).catch(() => null);
-  const r = (j?.rosters || []).find(x => String(x.team?.id) === String(id));
-  const st = (r?.roster || []).filter(x => x.starter);
-  if (st.length < 9) return '';
+  let ev, r, st = [];
+  for (const e of (past || []).slice(0, 6)) { // the latest game ESPN actually has a line-up for
+    const j = await get(`${SITE}soccer/all/summary?event=${e.id}`, 600000).catch(() => null);
+    r = (j?.rosters || []).find(x => String(x.team?.id) === String(id));
+    st = (r?.roster || []).filter(x => x.starter);
+    if (st.length >= 9) { ev = e; break; }
+  }
+  if (!ev) return '';
   const opp = (ev.competitions?.[0]?.competitors || []).find(c => String(c.team?.id) !== String(id))?.team?.displayName || '';
   return `<div class="card"><h2>⭐ ${teamName ? esc(teamName) + ' · ' : ''}${t('xi.title')}</h2><div class="hint" style="padding:0 14px 8px">${t('xi.note', esc(opp), dshort(ev.date))}</div><div style="padding:0 10px 12px">${pitchHtml(st, r.formation, 'all', { color: r.team?.color, team: r.team?.displayName })}</div></div>`;
 }
@@ -877,6 +1075,17 @@ function fixtureGroups(list, league, cap) {
 }
 
 
+// every team's place in a league table (UEFA competitions: the league phase), for the rank under the logos
+async function leagueRanks(league) {
+  const m = new Map();
+  if (isTff(league) || league === 'all' || leagueOf(league).table === false) return m;
+  const j = await get(`${apiSt(league)}/standings`, 300000).catch(() => null), groups = j?.children || [];
+  for (const g of groups) for (const en of g.standings?.entries || []) {
+    const st = n => en.stats.find(q => q.name === n)?.value, r = st('rank') || st('playoffSeed');
+    if (r) m.set(String(en.team?.id), { rank: r, pts: st('points') });
+  }
+  return m;
+}
 // the team's place in every table it plays in (league, European cup, …)
 async function teamRanks(id, evs, homeLeague) {
   const slugs = [...new Set([homeLeague, ...[...evs.past, ...evs.live, ...evs.next].map(e => leagueOfEvent(e, ''))].filter(x => x && x !== 'all' && !isTff(x)))].slice(0, 8);
@@ -915,6 +1124,8 @@ async function viewTeam(league, id, season) {
   setTitle(name);
   const teamNews = async () => (await newsFor(name)) || (LANG === 'en' ? await espnNews : []);
   const fav = isFav(id, league);
+  const newsP = teamNews().catch(() => []), forumP = teamForumHtml(league, id).catch(() => ''); // slow parts run side by side
+  const xiP = sportOf(league) === 'soccer' ? predictedXi(id, evs.past).catch(() => '') : Promise.resolve('');
   const ranks = sportOf(league) === 'soccer' && !pastSeason ? await teamRanks(id, evs, league).catch(() => []) : [];
   const rank = stat('rank')?.value || stat('playoffSeed')?.value;
   const summary = ranks.length ? ranks.slice(0, 2).map(r => t('rankIn', r.rank, r.name)).join(' · ') : rank ? t('rankIn', rank, groups.length > 1 ? group.name : lname(leagueOf(league))) : '';
@@ -933,7 +1144,7 @@ async function viewTeam(league, id, season) {
     || `<div class="empty">${t('noMatches')}</div>`;
   const fx = seasonBar + fxBody;
 
-  if (sportOf(league) !== 'soccer') return html + seg('team', [t('fixtures'), t('squad'), t('news.tab'), t('cat.teamForum')]) + pane('team', 0, fx) + pane('team', 1, usRosterHtml(roster, league)) + pane('team', 2, newsCard(await teamNews(), t('news.title'))) + pane('team', 3, await teamForumHtml(league, id));
+  if (sportOf(league) !== 'soccer') return html + seg('team', [t('fixtures'), t('squad'), t('news.tab'), t('cat.teamForum')]) + pane('team', 0, fx) + pane('team', 1, usRosterHtml(roster, league)) + pane('team', 2, newsCard(await newsP, t('news.title'))) + pane('team', 3, await teamForumHtml(league, id));
   const POS = [['Goalkeeper', 'pos.G'], ['Defender', 'pos.D'], ['Midfielder', 'pos.M'], ['Forward', 'pos.F']];
   const ath = roster?.athletes || [];
   const pl = x => playerCard(x, [x.age ? t('age', x.age) : '', x.citizenship || ''].filter(Boolean).join(' · '), 'soccer', league, name);
@@ -946,15 +1157,19 @@ async function viewTeam(league, id, season) {
   if (other.length) sq += `<div class="card"><h2>${t('other')}</h2>${pgrid(other.map(pl))}</div>`;
   if (ath.length) sq = `<div class="sqhead"><b>${ath.length}</b> ${t('sq.players')}</div>` + sq;
   if (!sq) sq = `<div class="empty">${t('noSquad')}</div>`;
-  sq = (await predictedXi(id, evs.past).catch(() => '')) + sq;
+  sq = (await xiP) + sq;
 
   // profile: competitions the club plays in (from its schedule) and the head coach
   const comps = [...new Set([...evs.past, ...evs.live, ...evs.next].map(e => { const sl = leagueOfEvent(e, ''); return LEAGUES.some(l => l.id === sl) ? lname(leagueOf(sl)) : (e.league?.name || e.league?.abbreviation || ''); }).filter(Boolean))];
   const coach = [roster?.coach?.[0]?.firstName, roster?.coach?.[0]?.lastName].filter(Boolean).join(' ');
   const infoRows = [['🏆', t('competitions'), comps.join(', ')], ['🧑‍💼', t('coach'), coach], ['📊', t('th.team'), summary]].filter(r => r[2]);
-  const infoPane = ranksCard(ranks) + (infoRows.length ? `<div class="card">${infoRows.map(([ic, kk, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(kk)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>` : `<div class="empty">${t('noInfo')}</div>`);
+  const infoPane = (infoRows.length ? `<div class="card">${infoRows.map(([ic, kk, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(kk)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>` : `<div class="empty">${t('noInfo')}</div>`);
   const k = 'team';
-  return html + seg(k, [t('fixtures'), t('squad'), t('info'), t('news.tab'), t('cat.teamForum')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, infoPane) + pane(k, 3, newsCard(await teamNews(), t('news.title'))) + pane(k, 4, await teamForumHtml(league, id));
+  // its own tab: the team's place in every competition, then the full tables (its team is the one the user came from)
+  let tbPane = ranksCard(ranks);
+  tbPane += (await Promise.all(ranks.slice(0, 3).map(async r => { try { return `<div class="card"><h2>${lgIcon(r.slug)} ${esc(r.name)}<a href="#/league/${esc(r.slug)}/puan">${t('o.standings')}</a></h2>${await standingsHtml(r.slug)}</div>`; } catch { return ''; } }))).join('');
+  if (!tbPane) tbPane = `<div class="empty">${t('noTable')}</div>`;
+  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, newsCard(await newsP, t('news.title'))) + pane(k, 5, await forumP);
 }
 
 
@@ -992,22 +1207,25 @@ async function viewPlayer(sport, league, id) {
   if (league === 'E' || league === 'U') return viewEuPlayer(league, id);
   if (league === 'thf') return viewThfPlayer(id);
   let a, o = null;
+  const oP = get(`${ESPN_C}${sport}/${league}/athletes/${id}/overview`, 300000).catch(() => null); // started together with the profile
   try {
     const j = await get(`${ESPN_C}${sport}/${league}/athletes/${id}`, 300000); a = j.athlete;
     var lg = j.league?.slug;
   } catch { return `<div class="empty">${t('pl.noData')}</div>`; }
   if (!a) return `<div class="empty">${t('pl.noData')}</div>`;
-  o = await get(`${ESPN_C}${sport}/${league}/athletes/${id}/overview`, 300000).catch(() => null);
+  o = await oP;
   setTitle(a.displayName || a.fullName);
   const team = a.team, teamLeague = sport === 'soccer' ? (lg || league) : league;
   const teamOk = team && (sport === 'soccer' || LEAGUES.some(l => l.id === teamLeague));
   const src = a.headshot?.href || hsUrl(sport, league, id);
   const pos = a.position?.displayName || a.position?.name || '';
   const p = { id, name: a.displayName || a.fullName, sport, league, team: team?.displayName || '' };
+  const pnP = newsFor(`"${p.name}" ${p.team}`.trim()).catch(() => null), careerP = careerHtml(sport, league, id).catch(() => '');
   const flag = a.flag?.href ? `<img class="flag" src="${esc(a.flag.href)}" alt="" onerror="this.remove()">` : '';
   const hero = `<div class="card hero plhero"><div class="plpic" style="--pc:${pcol(p.name)}"><span class="pin_">${esc(initials(p.name))}</span>${phImg(src, p.name, sport, p.team)}</div>
     <div style="font-size:21px;font-weight:700;margin-top:8px">${esc(p.name)}</div>
     <div class="st">${[a.displayJersey, pos].filter(Boolean).map(esc).join(' · ')}</div>
+    ${sport === 'soccer' ? `<a class="mval big" data-mv="${esc(p.name)}" data-mt="${esc(p.team || team?.displayName || '')}" hidden></a>` : ''}
     ${team ? `<div class="plteam">${teamOk ? `<a href="#/team/${esc(teamLeague)}/${esc(team.id)}">${img(team.id, '', teamLeague)} ${esc(team.displayName)}</a>` : esc(team.displayName)}</div>` : ''}
     <button class="favbtn ${isPFav(id, sport) ? 'on' : ''}" data-pfav="${esc(id)}" data-name="${esc(p.name)}" data-psport="${esc(sport)}" data-league="${esc(league)}" data-team="${esc(p.team)}">${isPFav(id, sport) ? t('pl.inFav') : t('pl.addFav')}</button></div>`;
   const rows = [['pl.age', a.age ? t('age', a.age) : ''], ['pl.born', dobOf(a)], ['pl.birthplace', a.displayBirthPlace], ['pl.nation', [a.citizenship].filter(Boolean).join('')],
@@ -1020,10 +1238,10 @@ async function viewPlayer(sport, league, id) {
     <tbody>${st.splits.map(sp => `<tr><td>${esc(sp.displayName)}</td>${sp.stats.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : '';
   const ev = o?.nextGame?.league?.events?.[0];
   const next = ev ? `<div class="card"><h2>${t('pl.next')}</h2><div class="inforow"><span class="k">${esc(dshort(ev.date))} · ${esc(hm(ev.date))}</span><span class="v">${esc(ev.name || ev.shortName || '')}</span></div></div>` : '';
-  const pn = (await newsFor(`"${p.name}" ${p.team}`.trim())) || (LANG === 'en' ? o?.news : null);
+  const pn = (await pnP) || (LANG === 'en' ? o?.news : null);
   const news = pn?.length ? newsCard(pn, t('news.title')) : '';
   const cmpBtn = `<a class="btn ghost" href="#/compare/${esc(sport)}/${esc(league)}/${esc(id)}" style="display:block;text-align:center;margin-bottom:10px">${t('cmp.btn')}</a>`;
-  const career = await careerHtml(sport, league, id).catch(() => '');
+  const career = await careerP;
   const summary = tiles + table + next + info + (!tiles && !table ? `<div class="empty">${t('pl.noStats')}</div>` : '');
   const key = 'player';
   return hero + cmpBtn + seg(key, [t('pl.tabSummary'), t('pl.career'), t('news.tab')]) + pane(key, 0, summary) + pane(key, 1, career || `<div class="empty">${t('pl.noCareer')}</div>`) + pane(key, 2, news || `<div class="empty">${t('news.none')}</div>`);
@@ -1094,12 +1312,31 @@ async function motmHtml(key, rosters, st) {
       <button class="cbtn ${mine ? 'on' : ''}" data-motm="${esc(key)}" data-pid="${esc(id)}">${mine ? t('mvp.voted') : t('mvp.vote')}</button></div>`; }).join('')}</div>`).join('');
   return `<div class="card"><h2>⭐ ${t('mvp.title')}${d.total ? ` · ${t('mvp.total', d.total)}` : ''}</h2>${top || `<div class="empty" style="padding:14px">${t('mvp.none')}</div>`}${acct ? '' : `<div class="form-block"><div class="hint">${t('mvp.login')}</div><a class="btn" href="#/profile" style="text-align:center">${t('c.login')} ›</a></div>`}</div>` + rows;
 }
-async function predictHtml(key, comp, st, h, a) {
+// win / draw / win chances: ESPN's predictor or win-probability when it has one, otherwise the bookmaker odds ESPN lists, turned into percentages
+function probFrom(j) {
+  const pr = j?.predictor, hp = parseFloat(pr?.homeTeam?.gameProjection), ap = parseFloat(pr?.awayTeam?.gameProjection);
+  if (isFinite(hp) && isFinite(ap)) return { h: Math.round(hp), d: Math.max(0, Math.round(100 - hp - ap)), a: Math.round(ap), src: 'ESPN' };
+  const w = (j?.winprobability || []).at(-1);
+  if (w && isFinite(w.homeWinPercentage)) { const h = w.homeWinPercentage * 100, d = (w.tiePercentage || 0) * 100; return { h: Math.round(h), d: Math.round(d), a: Math.round(100 - h - d), src: 'ESPN' }; }
+  const o = (j?.pickcenter || j?.odds || []).find(x => x.homeTeamOdds?.moneyLine != null && x.awayTeamOdds?.moneyLine != null);
+  if (o) {
+    const p = ml => ml > 0 ? 100 / (ml + 100) : -ml / (-ml + 100), v = [p(+o.homeTeamOdds.moneyLine), p(+(o.drawOdds?.moneyLine ?? 0)) * (o.drawOdds?.moneyLine != null ? 1 : 0), p(+o.awayTeamOdds.moneyLine)], s = v[0] + v[1] + v[2];
+    if (s > 0) return { h: Math.round(v[0] / s * 100), d: Math.round(v[1] / s * 100), a: Math.round(v[2] / s * 100), src: o.provider?.name || t('pred.odds') };
+  }
+  return null;
+}
+const probBar = (p, lh, la) => `<div class="probbar"><div class="pbl"><b>${p.h}%</b><span>${esc(lh)}</span></div><div class="pbl mid"><b>${p.d}%</b><span>${t('pred.draw')}</span></div><div class="pbl r"><b>${p.a}%</b><span>${esc(la)}</span></div>
+  <div class="pbar"><i class="h" style="width:${p.h}%"></i><i class="d" style="width:${p.d}%"></i><i class="a" style="width:${p.a}%"></i></div></div>`;
+async function predictHtml(key, comp, st, h, a, pj) {
   const [lg, ev] = key.split(':');
+  const cs = await capi('GET', '/predict/stats?m=' + encodeURIComponent(key)).catch(() => null);
+  const lh = h.team.displayName, la = a.team.displayName;
+  const chances = (pj ? `<div class="predsec"><small class="hint">${t('pred.prob')} · ${esc(pj.src)}</small>${probBar(pj, lh, la)}</div>` : '')
+    + (cs && cs.n ? `<div class="predsec"><small class="hint">${t('pred.users', cs.n)}</small>${probBar({ h: Math.round(cs.h / cs.n * 100), d: Math.round(cs.d / cs.n * 100), a: Math.round(cs.a / cs.n * 100) }, lh, la)}${cs.top ? `<small class="hint">${t('pred.top', cs.top.home + '-' + cs.top.away)}</small>` : ''}</div>` : '');
   let mine = null;
   if (acct) { try { mine = (await capi('GET', '/predict/mine?m=' + encodeURIComponent(key))).mine; } catch {} }
   const open = st.cls === 'pre' && new Date(comp.date) > new Date();
-  const head = `<h2>🎯 ${t('pred.title')}</h2>`;
+  const head = `<h2>🎯 ${t('pred.title')}</h2>${chances}`;
   const link = `<a class="btn ghost" href="#/leaderboard" style="text-align:center;margin:0 12px 12px">🏆 ${t('pred.lb')} ›</a>`;
   if (!open) return `<div class="card">${head}<div class="form-block">${mine ? `<div class="inforow"><span class="k">${t('pred.mineLbl')}</span><span class="v">${mine.home} - ${mine.away}${mine.settled === 1 ? ` · ${t('pred.pts', mine.pts)}` : ''}</span></div>` : `<div class="hint">${t('pred.closed')}</div>`}</div>${link}</div>`;
   if (!acct) return `<div class="card">${head}<div class="form-block"><div class="hint">${t('pred.hint')}</div><a class="btn" href="#/profile" style="text-align:center">${t('c.login')} ›</a></div>${link}</div>`;
@@ -1181,7 +1418,14 @@ async function viewFavs() {
   const mineF = other ? [] : favs.filter(f => sportOf(f.league) === curSport);
   const mineP = pfavs.filter(f => tabOfSport(f.sport) === curSport);
   const mineX = xfavs.filter(f => f.sport === curSport);
-  const xHtml = mineX.length ? `<div class="card"><h2>${t('o.teams')}</h2>${mineX.map(f => `<div class="clubrow"><a class="nm" href="#/tx/${esc(f.sport)}/${encodeURIComponent(f.name)}">${esc(f.name)}</a><span class="go">›</span></div>`).join('')}</div>` : '';
+  // handball / volleyball / basketball favourites: the team link and every upcoming match
+  const xCards = await Promise.all(mineX.map(async f => {
+    const c = await get(`${workerBase()}/tcomps?sport=${encodeURIComponent(f.sport)}&name=${encodeURIComponent(f.name)}`, 300000).catch(() => null);
+    const gs = (c?.games || []).filter(g => g.state !== 'post' && g.time).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+    const row = g => `<div class="match static"><div class="mtime pre">${esc(dshort(g.time))}<small>${esc(hm(g.time))}</small></div><div class="teams">${[g.home, g.away].map(n => `<div class="tm">${phLogo(n, f.sport)}<span class="tn">${esc(n)}</span></div>`).join('')}${g.comp ? `<small class="hint">${esc(g.comp)}</small>` : ''}</div></div>`;
+    return `<div class="card"><h2>${phLogo(f.name, f.sport)} <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/tx/${esc(f.sport)}/${encodeURIComponent(f.name)}">${t('teamLink')}</a></h2>${gs.map(row).join('') || `<div class="empty" style="padding:16px">${t('noMatch')}</div>`}</div>`;
+  }));
+  const xHtml = xCards.join('');
   const html = (mineF.length ? await favCards(mineF) : '') + xHtml + (mineP.length ? await favPlayers(mineP) : '');
   const calAll = favs.length || xfavs.length ? `<div class="form-block"><button class="btn ghost" data-ics-all>📅 ${t('o.calAll')}</button></div>` : '';
   return sportBar() + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`) + calAll;
@@ -1189,7 +1433,7 @@ async function viewFavs() {
 async function favCards(list) {
   const all = await Promise.all(list.map(f => teamEvents(f.id, f.league).then(e => ({ f, e })).catch(() => ({ f, e: { past: [], live: [], next: [] } }))));
   return all.map(({ f, e }) => {
-    const rows = [...e.live, ...e.past.slice(0, 1), ...e.next.slice(0, 2)].map(ev => matchRow(ev, leagueOfEvent(ev, f.league), true)).join('');
+    const rows = [...e.live, ...e.past.slice(0, 1), ...e.next].map(ev => matchRow(ev, leagueOfEvent(ev, f.league), true)).join('');
     return `<div class="card"><h2>${img(f.id, '', f.league)} <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/team/${f.league}/${f.id}">${t('teamLink')}</a></h2>${rows || `<div class="empty" style="padding:16px">${t('noMatch')}</div>`}</div>`;
   }).join('');
 }
@@ -1619,7 +1863,7 @@ function notifyCard() {
 
 
 const otherSportsCards = () => {
-  const spCard = `<div class="card"><h2>🏅 ${t('set.sports')}</h2><div class="chipwrap">${SPORTS.filter(x => x[0] !== 'soccer').map(([s, ic, k]) => `<label class="chk"><input type="checkbox" data-sport-vis="${s}" ${sportShown(s) ? 'checked' : ''}><span>${ic} ${t(k)}</span></label>`).join('')}</div></div>`;
+  const spCard = `<div class="card"><h2>🏅 ${t('set.sports')}</h2><div>${SPORTS.filter(x => x[0] !== 'soccer').map(([s, ic, k]) => `<label class="setrow"><span>${ic} ${t(k)}</span><input type="checkbox" data-sport-vis="${s}" ${sportShown(s) ? 'checked' : ''}></label>`).join('')}</div></div>`;
   const one = (sp, label) => `<div class="card"><h2>🌍 ${label}</h2><div class="hint" style="padding:0 14px 6px">${t('set.countriesHint')}</div><div class="chipwrap">${['Europe', 'World', ...CTRY_ALL].map(cn => `<label class="chk"><input type="checkbox" data-ctry="${sp}|${cn}" ${(ctryPref[sp] || CTRY_DEFAULT[sp]).includes(cn) ? 'checked' : ''}><span>${esc(ctryName(cn))}</span></label>`).join('')}</div>
     <div class="form-block selrow"><button class="btn ghost" data-ctry-all="${sp}|all">${t('set.all')}</button><button class="btn ghost" data-ctry-all="${sp}|none">${t('set.none')}</button><button class="btn ghost" data-ctry-reset="${sp}">${t('set.reset')}</button></div></div>`;
   return spCard + one('eubasket', t('sp.basketball')) + one('volley', t('sp.volley')) + one('handball', t('sp.handball'));
@@ -1628,11 +1872,18 @@ async function viewSettings() {
   setTitle(t('nav.settings'));
   const langCard = `<div class="card"><button class="langcur" data-lang-toggle aria-expanded="false"><span>🌐 ${t('language')}</span><b>${esc(LANGS[LANG_IDX()][1])} ▾</b></button><div class="langs" hidden>${LANGS.map(([c, n]) =>
     `<button class="langbtn ${c === LANG ? 'on' : ''}" data-lang="${c}">${n}</button>`).join('')}</div></div>`;
-  return langCard + themeCard() + '' + (isAdminUser() ? modCard() : '') + notifyCard() + otherSportsCards() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
+  const soundCard = `<div class="card"><h2>🔔 ${t('fx.sounds')}</h2><div class="hint" style="padding:0 14px 6px">${t('fx.soundsHint')}</div>${[['goal', t('np.goal')], ['cancel', t('fx.cancel')], ['var', t('np.var')], ['red', t('np.red')], ['remind', t('np.remind')], ['start', t('np.start')], ['ht', t('np.ht')], ['end', t('np.end')]].map(([k, n]) => `<button class="setrow sndrow" data-snd="${k}"><span>${esc(n)}</span><i>▶</i></button>`).join('')}</div>`;
+  const fxCard = `<div class="card"><h2>⚽ ${t('fx.title')}</h2>
+    <label class="setrow"><span>${t('fx.anim')}</span><input type="checkbox" data-fx="anim" ${fx.anim ? 'checked' : ''}></label>
+    <label class="setrow"><span>${t('fx.sound')}</span><input type="checkbox" data-fx="sound" ${fx.sound ? 'checked' : ''}></label>
+    <label class="setrow"><span>${t('fx.voice')}</span><input type="checkbox" data-fx="voice" ${fx.voice ? 'checked' : ''}></label>
+    <label class="setrow"><span>${t('fx.vib')}</span><input type="checkbox" data-fx="vib" ${fx.vib ? 'checked' : ''}></label>
+    <div class="form-block"><button class="btn ghost" data-fx-test>▶ ${t('fx.test')}</button></div><div class="hint" style="padding:0 14px 12px">${t('fx.hint')}</div></div>`;
+  return langCard + themeCard() + '' + fxCard + soundCard + notifyCard() + otherSportsCards() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
     <div class="selbar"><button class="btn" data-leagues-all="1">${t('set.all')}</button><button class="btn ghost" data-leagues-all="0">${t('set.none')}</button></div>
     ${GROUPS.map((ls, g) => `<div class="card"><h2>${t('grp.' + g)}<span class="grpact"><button data-grp-all="${g}|1" aria-label="${t('set.all')}">✓</button><button data-grp-all="${g}|0" aria-label="${t('set.none')}">✕</button></span></h2>
     ${ls.map(L => `<label class="setrow">${lgIcon(L.id)}<span>${esc(lname(L))}</span><input type="checkbox" data-league-toggle="${L.id}" ${enabled.includes(L.id) ? 'checked' : ''}></label>`).join('')}</div>`).join('')}
-    <div class="card about"><img src="logo.png" alt="Grafondex Live Score"><div class="note">${t('about')}</div></div>`;
+    <div class="card about"><img src="logo.png" alt="Grafondex Live Score"><div class="note">${t('about')}</div><div class="note">${t('version')}: ${APP_VERSION}</div></div>`;
 }
 
 // ---- Community: accounts, forum, match chat, moderation (Cloudflare D1 behind the same Worker) ----
@@ -1681,6 +1932,12 @@ function authForm() {
       <input id="r-pass" type="password" autocomplete="new-password" maxlength="100" placeholder="${esc(t('c.newPass'))}">
       <button class="btn" data-recover>${t('c.recover')}</button><div class="hint" id="r-msg"></div></div></div>`;
 }
+const adminLink = () => `<a class="card adminlink" href="#/admin"><span>🛡️</span><b>${t('admin.title')}</b><i>›</i></a>`;
+async function viewAdmin() {
+  setTitle(t('admin.title'));
+  if (!isAdminUser()) return `<div class="empty">${t('admin.no')}</div>`;
+  return `<div class="card adminhero"><b>🛡️ ${t('admin.title')}</b><div class="hint">${t('admin.hint')}</div></div>` + modCard();
+}
 function modCard() {
   return `<div class="card"><h2>🛡️ ${t('c.mod')}</h2><div class="form-block">
     <label>${t('c.username')}<input id="m-user" autocapitalize="off"></label>
@@ -1695,7 +1952,7 @@ function modCard() {
 const accountCard = () => acct
   ? `<div class="card"><div class="profhead">${avatar({ username: acct.user.username, color: acct.user.color }, 48)}<div><b style="font-size:16px">${esc(acct.user.username)}</b>${isAdminUser() ? ' <i class="adminbadge">ADMIN</i>' : ''}
       ${acct.user.fav ? `<div class="hint">⭐ ${esc(acct.user.fav.name)}</div>` : ''}</div></div>
-      <div class="form-block"><a class="btn" href="#/profile" style="text-align:center">${t('c.myProfile')} ›</a><button class="btn ghost" data-auth="logout">${t('c.logout')}</button></div></div>${isAdminUser() ? modCard() : ''}`
+      <div class="form-block"><a class="btn" href="#/profile" style="text-align:center">${t('c.myProfile')} ›</a><button class="btn ghost" data-auth="logout">${t('c.logout')}</button></div></div>${isAdminUser() ? adminLink() : ''}`
   : authForm();
 async function loadReports() {
   const box = document.getElementById('m-reports');
@@ -1711,13 +1968,14 @@ async function loadReports() {
 async function viewProfile() {
   setTitle(t('c.profile'));
   if (!acct) return authForm();
-  try { acct.user = (await capi('GET', '/me')).user; store.set('acct', acct); } catch {}
+  capi('GET', '/me').then(r => { if (acct && JSON.stringify(r.user) !== JSON.stringify(acct.user)) { acct.user = r.user; store.set('acct', acct); if (location.hash === '#/profile') render(true); } }).catch(() => {});
   const u = acct.user, me = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
   const swatches = AVATAR_COLORS.map(c => `<button class="swatch ${c === (u.color || hashColor(u.username)) ? 'on' : ''}" style="background:${c}" data-color="${c}" aria-label="${c}"></button>`).join('');
   const favNow = u.fav ? `<div class="favcur">${img(u.fav.id, 'mid', u.fav.league)}<a href="#/team/${esc(u.fav.league)}/${esc(u.fav.id)}"><b>${esc(u.fav.name)}</b></a><button class="cbtn txt" data-fav-clear>✕ ${t('c.remove')}</button></div>` : `<div class="hint">${t('c.noFavTeam')}</div>`;
   const mine = favs.slice(0, 12).map(f => `<button class="tcell" data-pick-team data-id="${esc(f.id)}" data-name="${esc(f.name)}" data-league="${esc(f.league)}">${img(f.id, 'mid', f.league)}<span>${esc(f.name)}</span></button>`).join('');
   return `<div class="card profhead">${avatar(me, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
       <div><a href="#/user/${encodeURIComponent(u.username)}" style="color:var(--accent);font-size:13px">${t('c.publicView')} ›</a></div></div></div>
+    ${u.role === 'admin' ? adminLink() : ''}
     ${u.badges?.length ? `<div class="card">${badgeRow(u.badges)}</div>` : ''}
     <div class="card"><h2>🎨 ${t('c.avatarColor')}</h2><div class="swatches">${swatches}</div></div>
     <div class="card"><h2>📝 ${t('c.bio')}</h2><div class="form-block"><textarea id="pf-bio" maxlength="140" rows="3" placeholder="${t('c.bioPh')}">${esc(u.bio || '')}</textarea>
@@ -2050,6 +2308,8 @@ function paintProfileTab() {
 }
 const afterRender = () => {
   paintProfileTab();
+  fillBadges(); fillLeagueLogos(); fillValues();
+  { const ab = document.getElementById('adminbtn'); if (ab) ab.hidden = !isAdminUser(); }
   pollNotifs();
   const sq = document.getElementById('sq'); if (sq && !sq.value) sq.focus();
   const on = document.querySelector('.sportbar button.on'); if (on) { const bar = on.parentElement; bar.scrollLeft = Math.max(0, on.offsetLeft - bar.clientWidth / 2 + on.offsetWidth / 2); }
@@ -2160,7 +2420,7 @@ document.addEventListener('click', async e => {
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, profile: viewProfile, user: viewUser,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, vplayer: viewVPlayer, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -2170,6 +2430,7 @@ function applyStatic() {
   $('#back').setAttribute('aria-label', t('back'));
   $('#refresh').setAttribute('aria-label', t('refresh'));
   $('#searchbtn').setAttribute('aria-label', t('search.title'));
+  $('#adminbtn').setAttribute('aria-label', t('admin.title'));
 }
 // soft placeholder cards while a page loads (instead of a bare spinner)
 const SKELETON = [0, 1].map(() => `<div class="card skel"><h2><i class="sk w40"></i></h2>${[0, 1, 2].map(() => '<div class="skrow"><i class="sk dot"></i><span><i class="sk w70"></i><i class="sk w50"></i></span></div>').join('')}</div>`).join('');
@@ -2189,9 +2450,9 @@ async function render(silent = false) {
   if (['matches', 'favs', 'leagues', 'settings'].includes(route)) lastTab = route;
   if (['league', 'table'].includes(route)) lastTab = 'leagues';
   if (['forum', 'post', 'user', 'leaderboard', 'notifs'].includes(route)) lastTab = 'forum';
-  if (route === 'profile') lastTab = 'profile';
+  if (route === 'profile' || route === 'admin') lastTab = 'profile';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'search', 'compare'].includes(route);
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'search', 'compare', 'admin'].includes(route);
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   let instant = null;
@@ -2277,6 +2538,7 @@ addEventListener('hashchange', () => render());
 $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/matches'));
 $('#refresh').onclick = () => { cache.clear(); render(); };
 $('#searchbtn').onclick = () => { location.hash = '#/search'; };
+$('#adminbtn').onclick = () => { location.hash = '#/admin'; };
 document.addEventListener('click', async e => {
   // tabs and round arrows inside a league page don't pile up in history
   const rl = e.target.closest('a[data-replace]');
@@ -2391,14 +2653,26 @@ document.addEventListener('click', async e => {
     if (location.hash.startsWith('#/favs')) render(true);
     return;
   }
+  const snd = e.target.closest('[data-snd]');
+  if (snd) { const k = snd.dataset.snd; if (k === 'goal') { kindVib('goal'); goalSound(); } else kindSound(k); return; }
+  const lub = e.target.closest('[data-lu]');
+  if (lub) { luSel = +lub.dataset.lu; const box = lub.closest('.pane') || document; box.querySelectorAll('[data-lu]').forEach(b => b.classList.toggle('on', b === lub)); box.querySelectorAll('[data-luteam]').forEach(x => { x.hidden = +x.dataset.luteam !== luSel; }); return; }
+  const fxb = e.target.closest('[data-fx]');
+  if (fxb) { fx[fxb.dataset.fx] = fxb.checked; store.set('fx', fx); if (fxb.checked && fxb.dataset.fx === 'sound') chimeSound(); return; }
+  if (e.target.closest('[data-fx-test]')) {
+    const row = document.createElement('div'); row.className = 'match goalrow'; row.style.cssText = 'position:fixed;left:12px;right:12px;top:30%;z-index:60;border-radius:14px;min-height:96px;background:var(--card)';
+    const demo = FX_DEMO[fxDemoN++ % FX_DEMO.length]; row.innerHTML = goalFxHtml(demo[0], '1–0', { color: demo[1], alternateColor: demo[2] }); document.body.appendChild(row);
+    goalSound(); if (fx.vib && navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    setTimeout(() => row.remove(), 4500); return;
+  }
   const ic1 = e.target.closest('[data-ics]');
-  if (ic1) { icsSave([{ t: ic1.dataset.icsT, s: ic1.dataset.icsS, w: ic1.dataset.icsW, d: +ic1.dataset.icsD }], 'match'); return; }
+  if (ic1) { icsSave([{ t: ic1.dataset.icsT, s: ic1.dataset.icsS, w: ic1.dataset.icsW, d: +ic1.dataset.icsD }], icsName(ic1.dataset.icsT, ic1.dataset.icsS)); return; }
   if (e.target.closest('[data-ics-all]')) {
     const btn = e.target.closest('[data-ics-all]'); btn.disabled = true;
     const out = [];
     await Promise.all(favs.map(async f => {
       const ev = await teamEvents(f.id, f.league).catch(() => null);
-      for (const x of [...(ev?.live || []), ...(ev?.next || [])].slice(0, 12)) out.push({ t: x.name || x.shortName || f.name, s: x.date, w: x.competitions?.[0]?.venue?.fullName || '' });
+      for (const x of [...(ev?.live || []), ...(ev?.next || [])]) out.push({ t: x.name || x.shortName || f.name, s: x.date, w: x.competitions?.[0]?.venue?.fullName || '' });
     }));
     await Promise.all(xfavs.map(async f => {
       const c = await get(`${workerBase()}/tcomps?sport=${encodeURIComponent(f.sport)}&name=${encodeURIComponent(f.name)}`, 300000).catch(() => null);
@@ -2474,4 +2748,10 @@ setInterval(() => {
 
 applyStatic();
 render();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // a new version took over (the service worker updates itself): reload once so the page and its scripts match
+  const hadSw = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSw && !sessionStorage.getItem('gx-reloaded')) { sessionStorage.setItem('gx-reloaded', '1'); location.reload(); } });
+  setTimeout(() => sessionStorage.removeItem('gx-reloaded'), 20000);
+}
