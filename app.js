@@ -252,9 +252,12 @@ const CTRY_ALL = [...CTRY_EU.filter(x => !['Europe', 'World'].includes(x)), 'Ice
   'Venezuela', 'China', 'Japan', 'South-Korea', 'Australia', 'New-Zealand', 'India', 'Iran', 'Qatar', 'Saudi-Arabia', 'Egypt', 'Tunisia', 'Algeria', 'Morocco', 'South-Africa', 'Nigeria', 'Taiwan', 'Thailand', 'Philippines', 'Indonesia'].sort((a, b) => a.localeCompare(b));
 const CTRY_DEFAULT = { handball: CTRY_EU, eubasket: CTRY_EU, volley: ['Turkey', 'Europe', 'World'] };
 let ctryPref = store.get('ctry', {});
-const ctryOn = (sport, country) => (ctryPref[sport] || CTRY_DEFAULT[sport] || []).includes(country || 'World');
-const groupOk = (sport, g) => { if (!g.country || !CTRY_DEFAULT[sport]) return true; if (!ctryPref[sport]) return g.def !== false; return ctryPref[sport].includes(g.country); };
-const ctryName = c => { try { return c.replace(/-/g, ' '); } catch { return c; } };
+// every country is on by default now (once for everybody); the choice lives in Settings › Sports, countries and leagues
+if (!store.get('ctryAllOn', false)) { ctryPref = {}; store.set('ctry', ctryPref); store.set('ctryAllOn', true); }
+const ctryOn = (sport, country) => !ctryPref[sport] || ctryPref[sport].includes(country || 'World');
+const groupOk = (sport, g) => { if (!g.country || !CTRY_DEFAULT[sport] || !ctryPref[sport]) return true; return ctryPref[sport].includes(g.country); };
+const CTRY_ISO = {"Albania": "AL", "Algeria": "DZ", "Argentina": "AR", "Australia": "AU", "Austria": "AT", "Azerbaijan": "AZ", "Belarus": "BY", "Belgium": "BE", "Bosnia-and-Herzegovina": "BA", "Brazil": "BR", "Bulgaria": "BG", "Canada": "CA", "Chile": "CL", "China": "CN", "Colombia": "CO", "Croatia": "HR", "Cyprus": "CY", "Czech-Republic": "CZ", "Denmark": "DK", "Egypt": "EG", "England": "GB-ENG", "Estonia": "EE", "Finland": "FI", "France": "FR", "Georgia": "GE", "Germany": "DE", "Greece": "GR", "Hungary": "HU", "Iceland": "IS", "India": "IN", "Indonesia": "ID", "Iran": "IR", "Ireland": "IE", "Israel": "IL", "Italy": "IT", "Japan": "JP", "Kazakhstan": "KZ", "Kosovo": "XK", "Latvia": "LV", "Lithuania": "LT", "Luxembourg": "LU", "Malta": "MT", "Mexico": "MX", "Montenegro": "ME", "Morocco": "MA", "Netherlands": "NL", "New-Zealand": "NZ", "Nigeria": "NG", "North-Macedonia": "MK", "Norway": "NO", "Philippines": "PH", "Poland": "PL", "Portugal": "PT", "Qatar": "QA", "Romania": "RO", "Russia": "RU", "Saudi-Arabia": "SA", "Serbia": "RS", "Slovakia": "SK", "Slovenia": "SI", "South-Africa": "ZA", "South-Korea": "KR", "Spain": "ES", "Sweden": "SE", "Switzerland": "CH", "Taiwan": "TW", "Thailand": "TH", "Tunisia": "TN", "Turkey": "TR", "UK": "GB", "Ukraine": "UA", "Uruguay": "UY", "USA": "US", "Venezuela": "VE"};
+const ctryName = c => { if (c === 'Europe') return t('ct.europe'); if (c === 'World') return t('ct.world'); if (c === 'England') return t('cc.eng'); const iso = CTRY_ISO[c]; try { if (iso && iso.length === 2) return new Intl.DisplayNames([LOCALE()], { type: 'region' }).of(iso) || c; } catch {} return String(c).replace(/-/g, ' '); };
 let sportsOn = store.get('sportsOn', null);
 const sportShown = s => s === 'soccer' || !sportsOn || sportsOn.includes(s);
 const OTHER_SPORTS = ['tennis', 'volley', 'handball', 'baseball', 'f1']; // basketball is one sport: NBA from ESPN, plus European leagues from the server (added below the NBA games)
@@ -276,7 +279,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
 let actx = null;
 const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
@@ -833,7 +836,7 @@ async function viewMatch(league, id) {
   const [mvHtml, prHtml] = await Promise.all([motmHtml(mkey, rosters, s).catch(() => ''), predictHtml(mkey, comp, s, h, a, probFrom(j)).catch(() => '')]);
   const T = { ev: [t('events'), evHtml], st: [t('stats'), stHtml], lu: [t('lineups'), luHtml], rc: [t('recent'), recentHtml(j, [h, a])], inf: [t('info'), infoHtml + calBtn(`${h.team.displayName} – ${a.team.displayName}`, comp.date, [gi.venue?.fullName, lname(leagueOf(league))].filter(Boolean).join(', '))],
     ch: [t('c.chat'), chatHtml('m-soccer-' + id)], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml] };
-  if (rk.size) T.tb = [t('o.standings'), await standingsHtml(league).catch(() => `<div class="empty">${t('noTable')}</div>`)];
+  if (rk.size) T.tb = [t('o.standings'), await standingsHtml(league, undefined, [h.team.id, a.team.id]).catch(() => `<div class="empty">${t('noTable')}</div>`)];
   const order = (s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'lu', 'rc', 'pr', 'tb', 'ch', 'ev', 'st', 'mv'] : ['ev', 'st', 'lu', 'tb', 'rc', 'inf', 'ch', 'mv', 'pr']).filter(x => T[x]);
   html += seg(k, order.map(x => T[x][0])) + order.map((x, i) => pane(k, i, T[x][1])).join('');
   return html;
@@ -1012,6 +1015,7 @@ async function workerPhoto(name, sport, team) {
 }
 // ESPN headshot failed -> server portrait -> Wikipedia portrait -> coloured initials
 function photoFb(img) {
+  if (img.dataset.ok) return;
   const st = +img.dataset.st || 0; img.dataset.st = st + 1;
   const n = img.dataset.n, sp = img.dataset.sp || 'soccer';
   const steps = [() => workerPhoto(n, sp, img.dataset.tm)]; // portraits only: Wikipedia pictures are often match photos in another club's kit
@@ -1019,7 +1023,11 @@ function photoFb(img) {
 }
 window.photoFb = photoFb;
 const pcol = n => `hsl(${[...String(n)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 360, 7)} 42% 40%)`;
-const phImg = (src, name, sport, team = '') => `<img loading="lazy" src="${esc(src)}" alt="" data-n="${esc(name || '')}" data-sp="${esc(sport || 'soccer')}" data-tm="${esc(team)}" onerror="photoFb(this)">`;
+const phImg = (src, name, sport, team = '') => `<img loading="lazy" src="${esc(src)}" alt="" data-n="${esc(name || '')}" data-sp="${esc(sport || 'soccer')}" data-tm="${esc(team)}" onerror="photoFb(this)" onload="phLoad(this)">`;
+// ESPN answers some missing headshots with a tiny/blank picture instead of an error: treat that as missing too
+window.phLoad = img => { if (img.naturalWidth < 40 || img.naturalHeight < 40) photoFb(img); else img.dataset.ok = '1'; };
+// and a headshot that never answers (slow CDN, blocked host) falls back after a few seconds
+function photoWatch() { setTimeout(() => document.querySelectorAll('img[data-n]:not([data-ok]):not([data-st])').forEach(im => { const r = im.getBoundingClientRect(); if (r.bottom > 0 && r.top < innerHeight && (!im.complete || !im.naturalWidth)) photoFb(im); }), 4500); }
 // feet/inches and pounds to metric outside English
 const unitH = s => { if (LANG === 'en' || !s) return s; const m = /(\d+)'\s*(\d+)?/.exec(s); return m ? `${Math.round((+m[1] * 12 + +(m[2] || 0)) * 2.54)} cm` : s; };
 const unitW = s => { if (LANG === 'en' || !s) return s; const m = /(\d+)\s*lbs?/i.exec(s); return m ? `${Math.round(+m[1] * .4536)} kg` : s; };
@@ -1798,7 +1806,7 @@ async function standingsHtml(league, season, hl) {
       const pos = changed ? k + 1 : v('rank'), mv = changed ? r.rank - (k + 1) : 0;
       const arrow = mv > 0 ? `<i class="mv up">▲${mv}</i>` : mv < 0 ? `<i class="mv dn">▼${-mv}</i>` : '';
       const lv = r.live ? ' lv' : '', fmt = n => (n > 0 && changed ? '+' : '') + n;
-      return `<tr class="${(hl ? String(e.team.id) === String(hl) : isFav(e.team.id, league)) ? 'fav' : ''}${r.live ? ' livetr' : ''}"><td class="r" style="border-left-color:${nt?.color || 'transparent'}">${pos}${arrow}</td>
+      return `<tr class="${(hl ? [].concat(hl).map(String).includes(String(e.team.id)) : isFav(e.team.id, league)) ? 'fav' : ''}${r.live ? ' livetr' : ''}"><td class="r" style="border-left-color:${nt?.color || 'transparent'}">${pos}${arrow}</td>
         <td class="t"><a href="#/team/${league}/${e.team.id}">${img(e.team.id, '', league)}<span>${esc(e.team.displayName)}</span>${r.live ? `<b class="lvdot" title="${esc(r.live.gf + '-' + r.live.ga)}">${r.live.gf}-${r.live.ga}</b>` : ''}${favStar(e.team.id, e.team.displayName, league)}</a></td>
         <td class="${lv}">${r.live ? r.gp : v('gamesPlayed')}</td><td class="${lv}">${r.live ? r.w : v('wins')}</td><td class="${lv}">${r.live ? r.d : v('ties')}</td><td class="${lv}">${r.live ? r.l : v('losses')}</td><td class="${lv}">${r.live ? fmt(r.gd) : v('pointDifferential')}</td><td class="p ${lv}">${r.live ? r.pts : v('points')}</td></tr>`;
     }).join('');
@@ -2038,13 +2046,17 @@ function notifyCard() {
 }
 
 
+const ctryCount = sp => { const el = document.querySelector(`[data-ccount="${sp}"]`); if (!el) return; const all = document.querySelectorAll(`[data-ctry^="${sp}|"]`); el.textContent = t('set.nOf', [...all].filter(x => x.checked).length, all.length); };
 const otherSportsCards = () => {
   const spCard = `<div class="card"><h2>🏅 ${t('set.sports')}</h2><div>${SPORTS.filter(x => x[0] !== 'soccer').map(([s, ic, k]) => `<label class="setrow"><span>${ic} ${t(k)}</span><input type="checkbox" data-sport-vis="${s}" ${sportShown(s) ? 'checked' : ''}></label>`).join('')}</div></div>`;
-  const one = (sp, label) => `<div class="card"><h2>🌍 ${label}</h2><div class="hint" style="padding:0 14px 6px">${t('set.countriesHint')}</div><div class="chipwrap">${['Europe', 'World', ...CTRY_ALL].map(cn => `<label class="chk"><input type="checkbox" data-ctry="${sp}|${cn}" ${(ctryPref[sp] || CTRY_DEFAULT[sp]).includes(cn) ? 'checked' : ''}><span>${esc(ctryName(cn))}</span></label>`).join('')}</div>
-    <div class="form-block selrow"><button class="btn ghost" data-ctry-all="${sp}|all">${t('set.all')}</button><button class="btn ghost" data-ctry-all="${sp}|none">${t('set.none')}</button><button class="btn ghost" data-ctry-reset="${sp}">${t('set.reset')}</button></div></div>`;
+  const ALL = ['Europe', 'World', ...[...CTRY_ALL].sort((a, b) => ctryName(a).localeCompare(ctryName(b), LOCALE()))];
+  const one = (sp, label) => { const on = ALL.filter(cn => ctryOn(sp, cn)).length; return `<details class="card setsec"><summary><span>🌍 ${label}</span><small data-ccount="${sp}">${t('set.nOf', on, ALL.length)}</small></summary><div class="hint" style="padding:0 14px 6px">${t('set.countriesHint')}</div>
+    <div class="form-block selrow"><button class="btn ghost" data-ctry-all="${sp}|all">${t('set.all')}</button><button class="btn ghost" data-ctry-all="${sp}|none">${t('set.none')}</button></div>
+    <div class="chipwrap" data-cwrap="${sp}">${ALL.map(cn => `<label class="chk"><input type="checkbox" data-ctry="${sp}|${cn}" ${ctryOn(sp, cn) ? 'checked' : ''}><span>${esc(ctryName(cn))}</span></label>`).join('')}</div></details>`; };
   return spCard + one('eubasket', t('sp.basketball')) + one('volley', t('sp.volley')) + one('handball', t('sp.handball'));
 };
-async function viewSettings() {
+async function viewSettings(sub) {
+  if (sub === 'icerik') return viewSettingsContent();
   setTitle(t('nav.settings'));
   const langCard = `<div class="card"><button class="langcur" data-lang-toggle aria-expanded="false"><span>🌐 ${t('language')}</span><b>${esc(LANGS[LANG_IDX()][1])} ▾</b></button><div class="langs" hidden>${LANGS.map(([c, n]) =>
     `<button class="langbtn ${c === LANG ? 'on' : ''}" data-lang="${c}">${n}</button>`).join('')}</div></div>`;
@@ -2055,11 +2067,20 @@ async function viewSettings() {
     <label class="setrow"><span>${t('fx.voice')}</span><input type="checkbox" data-fx="voice" ${fx.voice ? 'checked' : ''}></label>
     <label class="setrow"><span>${t('fx.vib')}</span><input type="checkbox" data-fx="vib" ${fx.vib ? 'checked' : ''}></label>
     <div class="form-block"><button class="btn ghost" data-fx-test>▶ ${t('fx.test')}</button></div><div class="hint" style="padding:0 14px 12px">${t('fx.hint')}</div></div>`;
-  return langCard + themeCard() + '' + fxCard + soundCard + notifyCard() + otherSportsCards() + `<p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
+  const contentLink = `<a class="card setlink" href="#/settings/icerik"><span class="slic">🏅</span><span class="slt"><b>${t('set.content')}</b><small>${t('set.contentHint')}</small></span><i>›</i></a>`;
+  return langCard + themeCard() + contentLink + fxCard + soundCard + notifyCard() + `<div class="card about"><img src="logo.png" alt="Grafondex Live Score"><div class="note">${t('about')}</div><div class="note">${t('version')}: ${APP_VERSION}</div></div>`;
+}
+// Settings › sports, countries and leagues (its own page; every section folds open on tap)
+function viewSettingsContent() {
+  setTitle(t('set.content'));
+  const grp = (ls, g) => { ls = ls.filter(shownL); if (!ls.length) return ''; const on = ls.filter(L => enabled.includes(L.id)).length;
+    return `<details class="card setsec"><summary><span>${t('grp.' + g)}</span><small data-gcount="${g}">${t('set.nOf', on, ls.length)}</small></summary>
+    <div class="form-block selrow"><button class="btn ghost" data-grp-all="${g}|1">${t('set.all')}</button><button class="btn ghost" data-grp-all="${g}|0">${t('set.none')}</button></div>
+    ${ls.map(L => `<label class="setrow">${lgIcon(L.id)}<span>${esc(lname(L))}</span><input type="checkbox" data-league-toggle="${L.id}" data-g="${g}" ${enabled.includes(L.id) ? 'checked' : ''}></label>`).join('')}</details>`; };
+  return otherSportsCards() + `<h3 class="sethead">⚽ ${t('set.leagues')}</h3><p class="note" style="text-align:left;padding:0 4px 8px">${t('pickLeaguesNote')}</p>
     <div class="selbar"><button class="btn" data-leagues-all="1">${t('set.all')}</button><button class="btn ghost" data-leagues-all="0">${t('set.none')}</button></div>
-    ${GROUPS.map(ls => ls.filter(shownL)).map((ls, g) => `<div class="card"><h2>${t('grp.' + g)}<span class="grpact"><button data-grp-all="${g}|1" aria-label="${t('set.all')}">✓</button><button data-grp-all="${g}|0" aria-label="${t('set.none')}">✕</button></span></h2>
-    ${ls.map(L => `<label class="setrow">${lgIcon(L.id)}<span>${esc(lname(L))}</span><input type="checkbox" data-league-toggle="${L.id}" ${enabled.includes(L.id) ? 'checked' : ''}></label>`).join('')}</div>`).join('')}
-    <div class="card about"><img src="logo.png" alt="Grafondex Live Score"><div class="note">${t('about')}</div><div class="note">${t('version')}: ${APP_VERSION}</div></div>`;
+    ${GROUPS.map(grp).join('')}`;
+
 }
 
 // ---- Community: accounts, forum, match chat, moderation (Cloudflare D1 behind the same Worker) ----
@@ -2559,6 +2580,7 @@ function fillLazy() {
   });
 }
 const afterRender = () => {
+  photoWatch();
   fillLazy();
   paintProfileTab();
   fillBadges(); fillLeagueLogos(); fillValues();
@@ -2717,7 +2739,7 @@ async function render(silent = false) {
   if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members'].includes(route)) lastTab = 'forum';
   if (route === 'profile' || route === 'admin') lastTab = 'profile';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article'].includes(route);
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article'].includes(route) && !(route === 'settings' && args[0]);
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   let instant = null, dir = 'same', instY = null;
@@ -2849,9 +2871,10 @@ document.addEventListener('click', async e => {
   const la = e.target.closest('[data-leagues-all]'), ga = e.target.closest('[data-grp-all]'), ca = e.target.closest('[data-ctry-all]');
   if (la || ga) {
     const ids = (la ? GROUPS.flat() : GROUPS[+ga.dataset.grpAll.split('|')[0]]).filter(shownL).map(l => l.id), on = (la ? la.dataset.leaguesAll : ga.dataset.grpAll.split('|')[1]) === '1';
-    enabled = on ? [...new Set([...enabled, ...ids])] : enabled.filter(x => !ids.includes(x)); store.set('leagues', enabled); render(true); return;
+    enabled = on ? [...new Set([...enabled, ...ids])] : enabled.filter(x => !ids.includes(x)); store.set('leagues', enabled);
+    document.querySelectorAll('[data-league-toggle]').forEach(x => { x.checked = enabled.includes(x.dataset.leagueToggle); }); grpCounts(); return;
   }
-  if (ca) { const [sp, mode] = ca.dataset.ctryAll.split('|'); ctryPref[sp] = mode === 'all' ? ['Europe', 'World', ...CTRY_ALL] : []; store.set('ctry', ctryPref); render(true); return; }
+  if (ca) { const [sp, mode] = ca.dataset.ctryAll.split('|'); if (mode === 'all') delete ctryPref[sp]; else ctryPref[sp] = []; store.set('ctry', ctryPref); document.querySelectorAll(`[data-ctry^="${sp}|"]`).forEach(x => { x.checked = mode === 'all'; }); ctryCount(sp); return; }
   const cr = e.target.closest('[data-ctry-reset]');
   if (cr) { delete ctryPref[cr.dataset.ctryReset]; store.set('ctry', ctryPref); render(true); return; }
   const sbr = e.target.closest('[data-sbar]');
@@ -3000,14 +3023,15 @@ document.addEventListener('change', e => {
     sportsOn = [...on]; store.set('sportsOn', sportsOn); if (!sportShown(curSport)) { curSport = 'soccer'; store.set('sport', curSport); } return;
   }
   if (e.target.dataset?.ctry) {
-    const [sp, cn] = e.target.dataset.ctry.split('|'), cur = new Set(ctryPref[sp] || CTRY_DEFAULT[sp]); e.target.checked ? cur.add(cn) : cur.delete(cn);
-    ctryPref[sp] = [...cur]; store.set('ctry', ctryPref); return;
+    const [sp, cn] = e.target.dataset.ctry.split('|'), cur = new Set(ctryPref[sp] || ['Europe', 'World', ...CTRY_ALL]); e.target.checked ? cur.add(cn) : cur.delete(cn);
+    ctryPref[sp] = [...cur]; store.set('ctry', ctryPref); ctryCount(sp); return;
   }
   const id = e.target.dataset?.leagueToggle;
   if (!id) return;
   enabled = e.target.checked ? [...new Set([...enabled, id])] : enabled.filter(x => x !== id);
-  store.set('leagues', enabled);
+  store.set('leagues', enabled); grpCounts();
 });
+function grpCounts() { document.querySelectorAll('[data-gcount]').forEach(el => { const all = document.querySelectorAll(`[data-league-toggle][data-g="${el.dataset.gcount}"]`); el.textContent = t('set.nOf', [...all].filter(x => x.checked).length, all.length); }); }
 
 // every data page refreshes itself while open: every 5 s when a live game is on screen, else every 30 s.
 // Each source keeps its own cache time (scores 4 s, tables 2 min, TFF referees 2 min, squads 5 min, TV 30 min).
