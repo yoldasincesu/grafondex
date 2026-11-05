@@ -14,7 +14,7 @@ const core = l => { const [sp, lg] = pathOf(l).split('/'); return `https://sport
 // [slug, official name, ESPN logo number, has a standings table]. Official names are the same in
 // every language; the country/region label beside them is translated (t('cc.*')).
 const GROUPS = [
-  [['tur.1', 'Trendyol Süper Lig', 18, 1], ['tur.2', 'Trendyol 1. Lig', 0, 1], ['tur.cup', 'Ziraat Türkiye Kupası', 0, 0], ['tur.w.1', 'Suwen Kadın Futbol Süper Ligi', 0, 1]],
+  [['tur.1', 'Trendyol Süper Lig', 18, 1], ['tur.2', 'Trendyol 1. Lig', 0, 1], ['tur.3', 'Nesine 2. Lig', 0, 1], ['tur.4', 'Nesine 3. Lig', 0, 1], ['tur.cup', 'Ziraat Türkiye Kupası', 0, 0], ['tur.w.1', 'Suwen Kadın Futbol Süper Ligi', 0, 1]],
   [['uefa.champions', 'UEFA Champions League', 2, 1], ['uefa.europa', 'UEFA Europa League', 2310, 1], ['uefa.europa.conf', 'UEFA Conference League', 20296, 1], ['uefa.super_cup', 'UEFA Super Cup', 1272, 0]],
   [['eng.1', 'Premier League', 23, 1], ['esp.1', 'LaLiga', 15, 1], ['ita.1', 'Serie A', 12, 1], ['ger.1', 'Bundesliga', 10, 1], ['fra.1', 'Ligue 1', 9, 1]],
   [['ned.1', 'Eredivisie', 11, 1], ['por.1', 'Liga Portugal', 14, 1], ['bel.1', 'Jupiler Pro League', 6, 1], ['sco.1', 'Scottish Premiership', 45, 1],
@@ -54,7 +54,9 @@ const ESPN_NUM = { 'tur.1': 3946, 'uefa.champions': 775, 'uefa.europa': 776, 'ue
 for (const L of LEAGUES) L.espn = ESPN_NUM[L.id];
 const leagueOf = id => LEAGUES.find(l => l.id === id) || { id, name: id, logo: 0 };
 const lname = L => L.name;
-const isTff = id => id === 'tur.cup' || id === 'tur.w.1' || id === 'tur.2'; // Turkish Cup and women's Super League come from TFF through the user's own server
+const TFF_PID = { 'tur.w.1': 1000, 'tur.2': 142, 'tur.3': 976, 'tur.4': 971 }; // TFF pages of the leagues that come from tff.org (3 and 4 have groups)
+const TFF_GROUPED = id => id === 'tur.3' || id === 'tur.4';
+const isTff = id => id === 'tur.cup' || !!TFF_PID[id]; // Turkish Cup and women's Super League come from TFF through the user's own server
 
 // region of a competition: flagcdn code + translated label
 const CC = { tur: 'tr', eng: 'gb-eng', esp: 'es', ita: 'it', ger: 'de', fra: 'fr', ned: 'nl', por: 'pt', bel: 'be', sco: 'gb-sct', aut: 'at', sui: 'ch', gre: 'gr', rus: 'ru', ksa: 'sa', usa: 'us', bra: 'br', arg: 'ar', uefa: 'eu', wal: 'gb-wls', nir: 'gb-nir', swe: 'se', nor: 'no', den: 'dk', fin: 'fi', rou: 'ro', cze: 'cz', cyp: 'cy', isr: 'il', irl: 'ie', jpn: 'jp', chn: 'cn', ind: 'in', aus: 'au', rsa: 'za', nga: 'ng', gha: 'gh',
@@ -89,6 +91,7 @@ let xfavs = store.get('xfavs', []); // teams of handball / volleyball / European
 let enabled = store.get('leagues', ['tur.1', 'tur.cup', 'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1']);
 // the Turkish Cup arrived later: switch it on once for people who already saved a league list
 // women's football: the main competitions are switched on once for everyone (they can be turned off in Settings)
+if (!store.get('lowerAdded', false)) { for (const id of ['tur.2', 'tur.3', 'tur.4']) if (!enabled.includes(id)) enabled.push(id); store.set('leagues', enabled); store.set('lowerAdded', true); }
 if (!store.get('womenAdded', false)) { for (const id of ['tur.w.1', 'uefa.wchampions', 'eng.w.1', 'esp.w.1', 'fra.w.1', 'usa.nwsl']) if (!enabled.includes(id)) enabled.push(id); store.set('leagues', enabled); store.set('womenAdded', true); }
 if (!store.get('cupAdded', false)) { if (!enabled.includes('tur.cup')) enabled.push('tur.cup'); store.set('leagues', enabled); store.set('cupAdded', true); }
 // every football league is on by default now (all of them come in one request)
@@ -237,7 +240,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v42';
 let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
 let actx = null;
 const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
@@ -615,14 +618,14 @@ async function viewMatches(dateStr) {
   // football: one "all football" list per day (every league at once, refreshed each minute);
   // leagues ESPN can't place in that list, and the other sports, are fetched league by league
   const single = soccer ? mine.filter(l => !leagueOf(l).espn) : mine;
-  const [allDays, res, tvItems, ztk, ksl, ksl2] = await Promise.all([
+  const TFFL = ['tur.w.1', 'tur.2', 'tur.3', 'tur.4'];
+  const [allDays, res, tvItems, ztk, ...tffRes] = await Promise.all([
     soccer ? Promise.allSettled(days.map(day => get(`${SITE}soccer/all/scoreboard?dates=${day}&limit=500`, 60000))) : [],
     Promise.allSettled(single.flatMap(l => days.map(day =>
       get(`${api(l)}/scoreboard?dates=${day}`).then(j => ({ l, events: j.events || [] }))))),
     soccer ? tvList(isoDay(d)) : [],
     soccer && enabled.includes('tur.cup') && workerBase() ? ztkData().catch(() => null) : null,
-    soccer && enabled.includes('tur.w.1') && workerBase() ? kslData(true).catch(() => null) : null,
-    soccer && enabled.includes('tur.2') && workerBase() ? kslData(true, 0, 'tur.2').catch(() => null) : null,
+    ...TFFL.map(l => soccer && enabled.includes(l) && workerBase() ? kslData(true, 0, l).catch(() => null) : null),
   ]);
   if (soccer) {
     const byEspn = Object.fromEntries(LEAGUES.filter(L => L.espn).map(L => [String(L.espn), L.id]));
@@ -643,9 +646,8 @@ async function viewMatches(dateStr) {
   }
   const tvOf = (ev, lg) => { const [h, a] = sides(ev.competitions[0]); return tvFor(tvItems, ev.date, h.team.displayName, a.team.displayName, lg); };
   const cupToday = (ztk?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
-  const kslToday = (ksl?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
-  const ksl2Today = (ksl2?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
-  const tffToday = { 'tur.cup': cupToday, 'tur.w.1': kslToday, 'tur.2': ksl2Today };
+  const tffDay = d => (d?.rounds || []).flatMap(r => r.matches).filter(m => m.iso && ymd(new Date(m.iso)) === key);
+  const tffToday = { 'tur.cup': cupToday, ...Object.fromEntries(TFFL.map((l, i) => [l, tffDay(tffRes[i])])) };
   const byLeague = {}, seen = new Set(), favRows = [];
   for (const r of res) {
     if (r.status !== 'fulfilled') continue;
@@ -1109,6 +1111,12 @@ async function teamRanks(id, evs, homeLeague) {
   const order = slugs.reduce((o, x, i) => (o[x] = i, o), {});
   return rs.filter(r => r && r.rank).sort((a, b) => order[a.slug] - order[b.slug]);
 }
+async function clubInfo(name, sport) {
+  try {
+    const c = await get(`${workerBase()}/api/club?n=${encodeURIComponent(name)}&sp=${sport}`, 86400000);
+    return [['🏟️', t('i.stadium'), c.stadium], ['👥', t('i.cap'), c.cap ? Number(c.cap).toLocaleString() : ''], ['📍', t('i.city'), c.city], ['📅', t('i.formed'), c.formed], ['🌍', t('i.country'), c.country], ['🧑‍💼', t('coach'), c.manager], ['🌐', t('i.web'), c.web]].filter(r => r[2]);
+  } catch { return []; }
+}
 const ranksCard = ranks => ranks.length ? `<div class="card"><h2>📊 ${t('rank.title')}</h2>${ranks.map(r => `<a class="lrow rankrow" href="#/league/${esc(r.slug)}/puan">${lgIcon(r.slug)}<span class="nm">${esc(r.name)}${r.group ? `<small class="hint" style="display:block">${esc(r.group)}</small>` : ''}</span>
   <span class="rk"><b>${r.rank}.</b><small>${r.pts ?? '-'} ${t('th.Pts')} · ${r.w ?? 0}-${r.d ?? 0}-${r.l ?? 0}</small></span></a>`).join('')}</div>` : '';
 async function viewTeam(league, id, season) {
@@ -1137,9 +1145,16 @@ async function viewTeam(league, id, season) {
   const baseSummary = rank ? t('rankIn', rank, groups.length > 1 ? group.name : lname(leagueOf(league))) : '';
   const sumP = ranksP.then(ranks => ranks.length ? ranks.slice(0, 2).map(r => t('rankIn', r.rank, r.name)).join(' · ') : baseSummary);
   const summary = baseSummary;
-  const rec = stat('overall')?.displayValue;
+  // last five results across every competition, newest last (coloured W/D/L chips)
+  const formStr = sportOf(league) === 'soccer' ? [...evs.past].sort((x, y) => new Date(x.date) - new Date(y.date)).slice(-5).map(e => {
+    const cs = e.competitions?.[0]?.competitors || [], me = cs.find(c => c.team?.id == id), op = cs.find(c => c.team?.id != id);
+    if (!me || !op || me.score == null || op.score == null) return '';
+    const a = +(me.score.value ?? me.score), b = +(op.score.value ?? op.score);
+    return a > b ? 'W' : a < b ? 'L' : 'D';
+  }).join('') : '';
+  const rec = '';
   let html = `<div class="card hero">${img(id, 'big', league)}<div style="font-size:20px;font-weight:700;margin-top:8px">${esc(name)}</div>
-    <div class="st">${lazy(sumP.then(esc), 'span')}${rec ? ' · ' + esc(rec) + (sportOf(league) === 'soccer' ? ' ' + t('wdl') : '') : ''}</div>
+    <div class="st">${lazy(sumP.then(esc), 'span')}${formStr ? `<div class="form big">${[...formStr].map(c => `<i class="${c}">${t('res.' + c)}</i>`).join('')}</div>` : ''}${rec ? ' · ' + esc(rec) + (sportOf(league) === 'soccer' ? ' ' + t('wdl') : '') : ''}</div>
     <button class="favbtn ${fav ? 'on' : ''}" data-fav="${id}" data-name="${esc(name)}" data-league="${league}">${fav ? t('inFavs') : t('addFav')}</button></div>`;
 
   const rows = (list, withDate) => list.map(e => matchRow(e, leagueOfEvent(e, league), withDate)).join('');
@@ -1170,15 +1185,16 @@ async function viewTeam(league, id, season) {
   // profile: competitions the club plays in (from its schedule) and the head coach
   const comps = [...new Set([...evs.past, ...evs.live, ...evs.next].map(e => { const sl = leagueOfEvent(e, ''); return LEAGUES.some(l => l.id === sl) ? lname(leagueOf(sl)) : (e.league?.name || e.league?.abbreviation || ''); }).filter(Boolean))];
   const coach = [roster?.coach?.[0]?.firstName, roster?.coach?.[0]?.lastName].filter(Boolean).join(' ');
-  const infoPane = lazy(sumP.then(summary => { const infoRows = [['🏆', t('competitions'), comps.join(', ')], ['🧑‍💼', t('coach'), coach], ['📊', t('th.team'), summary]].filter(r => r[2]); return (infoRows.length ? `<div class="card">${infoRows.map(([ic, kk, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(kk)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>` : `<div class="empty">${t('noInfo')}</div>`); }));
+  const clubP = clubInfo(name, sportOf(league));
+  const infoPane = lazy(Promise.all([sumP, clubP]).then(([summary, ci]) => { const infoRows = [...ci, ['🏆', t('competitions'), comps.join(', ')], ['🧑‍💼', t('coach'), coach || ''], ['📊', t('th.team'), summary]].filter(r => r[2]); return (infoRows.length ? `<div class="card">${infoRows.map(([ic, kk, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(kk)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>` : `<div class="empty">${t('noInfo')}</div>`); }));
   const k = 'team';
   // its own tab: the team's place in every competition, then the full tables (its team is the one the user came from)
   const tbPane = lazy(ranksP.then(async ranks => {
   let tbPane = ranksCard(ranks);
-  tbPane += (await Promise.all(ranks.slice(0, 3).map(async r => { try { return `<div class="card"><h2>${lgIcon(r.slug)} ${esc(r.name)}<a href="#/league/${esc(r.slug)}/puan">${t('o.standings')}</a></h2>${await standingsHtml(r.slug)}</div>`; } catch { return ''; } }))).join('');
+  tbPane += (await Promise.all(ranks.slice(0, 3).map(async r => { try { return `<div class="card"><h2>${lgIcon(r.slug)} ${esc(r.name)}<a href="#/league/${esc(r.slug)}/puan">${t('o.standings')}</a></h2>${await standingsHtml(r.slug, undefined, id)}</div>`; } catch { return ''; } }))).join('');
   if (!tbPane) tbPane = `<div class="empty">${t('noTable')}</div>`;
   return tbPane; }));
-  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, lazy(newsP.then(n => newsCard(n, t('news.title'))))) + pane(k, 5, lazy(forumP));
+  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, lazy(newsOr(newsP, t('news.title')))) + pane(k, 5, lazy(forumP));
 }
 
 
@@ -1247,7 +1263,7 @@ async function viewPlayer(sport, league, id) {
     <tbody>${st.splits.map(sp => `<tr><td>${esc(sp.displayName)}</td>${sp.stats.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : '';
   const ev = o?.nextGame?.league?.events?.[0];
   const next = ev ? `<div class="card"><h2>${t('pl.next')}</h2><div class="inforow"><span class="k">${esc(dshort(ev.date))} · ${esc(hm(ev.date))}</span><span class="v">${esc(ev.name || ev.shortName || '')}</span></div></div>` : '';
-  const news = lazy(pnP.then(pn => { pn = pn || (LANG === 'en' ? o?.news : null); return pn?.length ? newsCard(pn, t('news.title')) : `<div class="empty">${t('news.none')}</div>`; }));
+  const news = lazy(newsOr(pnP.then(pn => pn || (LANG === 'en' ? o?.news : null)), t('news.title')));
   const cmpBtn = `<a class="btn ghost" href="#/compare/${esc(sport)}/${esc(league)}/${esc(id)}" style="display:block;text-align:center;margin-bottom:10px">${t('cmp.btn')}</a>`;
   const career = lazy(careerP.then(c => c || `<div class="empty">${t('pl.noCareer')}</div>`));
   const summary = tiles + table + next + info + (!tiles && !table ? `<div class="empty">${t('pl.noStats')}</div>` : '');
@@ -1382,6 +1398,15 @@ async function newsFor(q) {
     return (j.items || []).length ? j.items.map(x => ({ headline: x.title, published: x.date, source: x.source, links: { web: { href: x.link } } })) : null;
   } catch { return null; }
 }
+// when a team or player has no news of its own: Turkey + world headlines instead of an empty tab
+async function generalNews() {
+  const qs = LANG === 'tr' || LANG === 'ku' ? ['Türkiye gündem', 'dünya haberleri'] : ['Turkey news', 'world news'];
+  const r = await Promise.all(qs.map(q => newsFor(q).catch(() => null)));
+  const a = r[0] || [], b = r[1] || [], out = [];
+  for (let i = 0; i < 6; i++) { if (a[i]) out.push(a[i]); if (b[i]) out.push(b[i]); }
+  return out;
+}
+const newsOr = async (p, title) => { const n = await p; return n && n.length ? newsCard(n, title) : newsCard(await generalNews().catch(() => []), t('news.general')); };
 const newsCard = (items, title) => {
   const rows = (items || []).filter(a => a.headline && (a.links?.web?.href || a.link)).slice(0, 10).map(a => {
     const pic = a.images?.[0]?.url, d = a.published || a.lastModified;
@@ -1630,7 +1655,7 @@ function usStandingsHtml(league, groups) {
   }).join('');
 }
 
-async function standingsHtml(league, season) {
+async function standingsHtml(league, season, hl) {
   const j = await get(`${apiSt(league)}/standings${season && season !== curSeasonYear() ? '?season=' + season : ''}`, 120000);
   const groups = j.children || [];
   if (!groups.length) return `<div class="empty">${t('noTable')}</div>`;
@@ -1654,11 +1679,12 @@ async function standingsHtml(league, season) {
     if (changed) { anyLive = true; R.sort((x, y) => y.pts - x.pts || x.rank - y.rank); }
     const rows = R.map((r, k) => {
       const e = r.e, v = n => sv(e, n)?.displayValue ?? '';
-      if (e.note) notes.set(e.note.description, e.note.color);
+      const nt = e.note && e.note.description !== 'Eliminated' ? e.note : null; // ESPN marks the bottom of a league phase 'Eliminated' long before it ends
+      if (nt) notes.set(nt.description, nt.color);
       const pos = changed ? k + 1 : v('rank'), mv = changed ? r.rank - (k + 1) : 0;
       const arrow = mv > 0 ? `<i class="mv up">▲${mv}</i>` : mv < 0 ? `<i class="mv dn">▼${-mv}</i>` : '';
       const lv = r.live ? ' lv' : '', fmt = n => (n > 0 && changed ? '+' : '') + n;
-      return `<tr class="${isFav(e.team.id, league) ? 'fav' : ''}${r.live ? ' livetr' : ''}"><td class="r" style="border-left-color:${e.note?.color || 'transparent'}">${pos}${arrow}</td>
+      return `<tr class="${(hl ? String(e.team.id) === String(hl) : isFav(e.team.id, league)) ? 'fav' : ''}${r.live ? ' livetr' : ''}"><td class="r" style="border-left-color:${nt?.color || 'transparent'}">${pos}${arrow}</td>
         <td class="t"><a href="#/team/${league}/${e.team.id}">${img(e.team.id, '', league)}<span>${esc(e.team.displayName)}</span>${r.live ? `<b class="lvdot" title="${esc(r.live.gf + '-' + r.live.ga)}">${r.live.gf}-${r.live.ga}</b>` : ''}${favStar(e.team.id, e.team.displayName, league)}</a></td>
         <td class="${lv}">${r.live ? r.gp : v('gamesPlayed')}</td><td class="${lv}">${r.live ? r.w : v('wins')}</td><td class="${lv}">${r.live ? r.d : v('ties')}</td><td class="${lv}">${r.live ? r.l : v('losses')}</td><td class="${lv}">${r.live ? fmt(r.gd) : v('pointDifferential')}</td><td class="p ${lv}">${r.live ? r.pts : v('points')}</td></tr>`;
     }).join('');
@@ -1677,7 +1703,7 @@ async function viewLeague(league = 'tur.1', tab = 'fikstur', start) {
   const L = leagueOf(league);
   setTitle(lname(L));
   if (tab === 'puan') store.set('tableLeague', league);
-  const tabs = league === 'tur.w.1' || league === 'tur.2' ? LTABS.slice(0, 2) : isTff(league) ? LTABS.slice(0, 1)
+  const tabs = TFF_PID[league] ? LTABS.slice(0, 2) : isTff(league) ? LTABS.slice(0, 1)
     : LTABS.filter(([k]) => (k !== 'puan' || L.table) && (sportOf(league) === 'soccer' || !['gol', 'asist'].includes(k)));
   if (!tabs.some(([k]) => k === tab)) tab = 'fikstur';
   const sb = isTff(league) ? null : await get(`${api(league)}/scoreboard`, HOUR).catch(() => null);
@@ -1686,7 +1712,7 @@ async function viewLeague(league = 'tur.1', tab = 'fikstur', start) {
     <div><b>${esc(lname(L))}</b>${regionLine(league)}${yr ? `<small>${t('season', yr)}</small>` : ''}</div>
     <button class="pin ${pinned.includes(league) ? 'on' : ''}" data-pin="${league}" aria-label="${t('pin')}">${pinned.includes(league) ? '★' : '☆'}</button></div>`;
   const segHtml = `<div class="seg">${tabs.map(([k, l]) => `<a data-replace href="#/league/${league}/${k}" class="${k === tab ? 'on' : ''}">${t(l)}</a>`).join('')}</div>`;
-  if (league === 'tur.w.1' || league === 'tur.2') return head + segHtml + await kslHtml(tab, start, league);
+  if (TFF_PID[league]) return head + segHtml + await kslHtml(tab, start, league);
   if (isTff(league)) return head + segHtml + await tffCupHtml(start);
   const soccerPast = sportOf(league) === 'soccer' && selSeason(league) !== curSeasonYear();
   const seasonBar = sportOf(league) === 'soccer' ? `<div class="seasonbar">${seasonSelect(`data-league-season="${league}"`, selSeason(league))}</div>` : '';
@@ -1709,7 +1735,9 @@ const TFF_SHORT = [['IĞDIR', 'Iğdır FK'], ['KEÇİÖRENGÜCÜ', 'Keçiöreng�
 function tffName(n) {
   { const up = String(n || '').toLocaleUpperCase('tr'); const hit = TFF_SHORT.find(([k]) => up.includes(k)); if (hit) return hit[1]; }
   const s = String(n || '').replace(/\s+(A\.\s?Ş\.?|FUTBOL KULÜBÜ|SPOR KULÜBÜ DERNEĞİ|KULÜBÜ|DERNEĞİ)$/u, '');
-  return s.toLocaleLowerCase('tr').replace(/(^|[\s(\-./])(\p{L})/gu, (_, a, b) => a + b.toLocaleUpperCase('tr'));
+  // Turkish casing (I -> ı) only where the name has Turkish letters; "CHRIST OTINIEL" would turn into "Chrıst"
+  const loc = /[İÇĞÖŞÜ]/.test(String(n || '')) ? 'tr' : 'en';
+  return s.toLocaleLowerCase(loc).replace(/(^|[\s(\-./])(\p{L})/gu, (_, a, b) => a + b.toLocaleUpperCase(loc));
 }
 function tffRoundName(n) {
   if (/son\s*16/i.test(n)) return t('rd.r16');
@@ -1720,22 +1748,32 @@ function tffRoundName(n) {
   return m ? t('roundN', m[1]) : n;
 }
 const tffScore = s => { const m = String(s || '').match(/^(\d+)\s*-\s*(\d+)/); return m ? [m[1], m[2]] : null; };
-function tffRow(m, lg = 'tur.cup') {
+function tffRow(m, lg = 'tur.cup', withDate = false) {
   const sc = tffScore(m.score);
   const team = (n, g, win) => `<div class="tm ${win ? 'win' : ''}"><span class="tinit">${esc(tffName(n).slice(0, 1))}</span><span class="tn">${esc(tffName(n))}</span><b class="ts post">${g ?? ''}</b></div>`;
-  return `<a class="match" href="#/tff/${m.id}/${lg}"><div class="mtime ${sc ? 'post' : 'pre'}">${sc ? t('st.FT') : (m.iso ? hm(m.iso) : '')}</div>
+  return `<a class="match" href="#/tff/${m.id}/${lg}"><div class="mtime ${sc ? 'post' : 'pre'}">${withDate && m.iso ? dshort(m.iso) + '<small>' : ''}${sc ? t('st.FT') : (m.iso ? hm(m.iso) : '')}${withDate && m.iso ? '</small>' : ''}</div>
     <div class="teams">${team(m.home, sc?.[0], sc && +sc[0] > +sc[1])}${team(m.away, sc?.[1], sc && +sc[1] > +sc[0])}</div></a>`;
 }
 const ztkData = () => get(`${workerBase()}/ztk`, 300000);
-const kslData = (around, hafta, lg = 'tur.w.1') => get(`${workerBase()}/ksl?${[hafta ? 'hafta=' + hafta : around ? 'around=1' : '', lg === 'tur.2' ? 'lig=142' : ''].filter(Boolean).join('&')}`, 120000);
+const tgrpGet = lg => (store.get('tgrp', {})[lg]) || '';
+const kslData = (around, hafta, lg = 'tur.w.1') => TFF_GROUPED(lg)
+  ? get(`${workerBase()}/tfflig?${[`pid=${TFF_PID[lg]}`, tgrpGet(lg) ? 'grup=' + tgrpGet(lg) : '', hafta ? 'hafta=' + hafta : around ? 'around=1' : ''].filter(Boolean).join('&')}`, 120000)
+  : get(`${workerBase()}/ksl?${[hafta ? 'hafta=' + hafta : around ? 'around=1' : '', lg === 'tur.2' ? 'lig=142' : ''].filter(Boolean).join('&')}`, 120000);
 // Turkish women's Super League: week-by-week fixtures and the table
+// league table of a TFF league; every club links to its own page
+const tffTableHtml = (d, lg, hl = '') => {
+  if (!d.table?.length) return `<div class="empty">${t('noTable')}</div>`;
+  const rows = d.table.map(r => `<tr class="${hl && r.name === hl ? 'me' : ''}"><td class="r">${r.rank}</td><td class="t"><a class="tl" href="#/tt/${lg}/${encodeURIComponent(r.name)}/${esc(d.grup || '')}"><span class="tinit">${esc(tffName(r.name).slice(0, 1))}</span><span>${esc(tffName(r.name))}</span></a></td><td>${esc(r.o)}</td><td>${esc(r.g)}</td><td>${esc(r.b)}</td><td>${esc(r.m)}</td><td>${esc(r.av)}</td><td class="p">${esc(r.p)}</td></tr>`).join('');
+  return `<div class="card"><table><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+};
+// 2. and 3. Lig are played in groups: one chip per group
+const groupBar = (d, lg) => TFF_GROUPED(lg) && d.groups?.length > 1
+  ? `<div class="chipwrap" style="padding:0 0 10px">${d.groups.map(g => `<button class="btn ${String(g.id) === String(d.grup) ? '' : 'ghost'}" style="padding:6px 14px" data-tgrp="${lg}|${esc(g.id)}">${esc(g.name)}</button>`).join('')}</div>` : '';
 async function kslHtml(tab, start, lg = 'tur.w.1') {
   if (!workerBase()) return needWorkerHtml();
   if (tab === 'puan') {
     const d = await kslData(false, 0, lg);
-    if (!d.table?.length) return `<div class="empty">${t('noTable')}</div>`;
-    const rows = d.table.map(r => `<tr><td class="r">${r.rank}</td><td class="t"><span class="tinit">${esc(tffName(r.name).slice(0, 1))}</span><span>${esc(tffName(r.name))}</span></td><td>${esc(r.o)}</td><td>${esc(r.g)}</td><td>${esc(r.b)}</td><td>${esc(r.m)}</td><td>${esc(r.av)}</td><td class="p">${esc(r.p)}</td></tr>`).join('');
-    return `<div class="card"><table><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return groupBar(d, lg) + tffTableHtml(d, lg);
   }
   const d = await kslData(false, start ? +start : 0, lg);
   const cur = +start || d.current, total = d.total || 30, base = `#/league/${lg}/fikstur/`;
@@ -1745,7 +1783,7 @@ async function kslHtml(tab, start, lg = 'tur.w.1') {
   const ms = [...(d.rounds?.[0]?.matches || [])].sort((a, b) => (a.iso || '').localeCompare(b.iso || ''));
   const byDay = new Map();
   for (const m of ms) { const k = m.iso ? fmtD(m.iso, { weekday: 'long', day: 'numeric', month: 'long' }) : ''; (byDay.get(k) || byDay.set(k, []).get(k)).push(m); }
-  return nav + `<div class="weektitle">${t('roundN', cur)}</div>` + ([...byDay].map(([k, l]) => `<div class="card"><h2 style="text-transform:capitalize">${esc(k)}</h2>${l.map(m => tffRow(m, lg)).join('')}</div>`).join('') || `<div class="empty">${t('noMatches')}</div>`);
+  return groupBar(d, lg) + nav + `<div class="weektitle">${t('roundN', cur)}</div>` + ([...byDay].map(([k, l]) => `<div class="card"><h2 style="text-transform:capitalize">${esc(k)}</h2>${l.map(m => tffRow(m, lg)).join('')}</div>`).join('') || `<div class="empty">${t('noMatches')}</div>`);
 }
 
 async function tffCupHtml(start) {
@@ -1768,16 +1806,33 @@ async function tffCupHtml(start) {
     + [...byDay].map(([k, ms]) => `<div class="card"><h2 style="text-transform:capitalize">${esc(k)}</h2>${ms.map(tffRow).join('')}</div>`).join('');
 }
 
+// a club of a TFF league (1. / 2. / 3. Lig, women's Super League): its place in the table and the whole season
+async function viewTffTeam(lg, rawName, grup = '') {
+  const name = decodeURIComponent(rawName || ''); setTitle(tffName(name));
+  if (!workerBase()) return needWorkerHtml();
+  if (!TFF_PID[lg]) return `<div class="empty">${t('noInfo')}</div>`;
+  const d = await get(`${workerBase()}/tffteam?pid=${TFF_PID[lg]}&grup=${encodeURIComponent(grup || '')}&name=${encodeURIComponent(name)}`, 300000).catch(() => null);
+  if (!d || d.error) return `<div class="empty">${t('loadFail')}</div>`;
+  const r = d.row;
+  const hero = `<div class="card hero"><span class="tinit big">${esc(tffName(name).slice(0, 1))}</span><div style="font-size:20px;font-weight:700;margin-top:8px">${esc(tffName(name))}</div>
+    <div class="st">${r ? esc(`${t('rankIn', r.rank, lname(leagueOf(lg)))} · ${r.o} ${t('th.P')} · ${r.g}-${r.b}-${r.m} · ${r.p} ${t('th.Pts')}`) : esc(lname(leagueOf(lg)))}</div></div>`;
+  const ms = d.matches || [], done = ms.filter(m => tffScore(m.score)).reverse(), next = ms.filter(m => !tffScore(m.score));
+  const rows = list => list.map(m => tffRow(m, lg, true)).join('');
+  const fx = (next.length ? `<div class="fxsec">${t('upcoming')}</div><div class="card">${rows(next)}</div>` : '') + (done.length ? `<div class="fxsec">${t('recentMatches')}</div><div class="card">${rows(done)}</div>` : '') || `<div class="empty">${t('noMatches')}</div>`;
+  const tb = d.table?.length ? tffTableHtml(d, lg, d.row?.name || name) : `<div class="empty">${t('noTable')}</div>`;
+  return hero + seg('tt', [t('fixtures'), t('o.standings')]) + pane('tt', 0, fx) + pane('tt', 1, tb);
+}
 async function viewTffMatch(id, lg = 'tur.cup') {
   setTitle(lname(leagueOf(lg)));
   if (!workerBase()) return needWorkerHtml();
   const m = await get(`${workerBase()}/tffmatch?id=${encodeURIComponent(id)}`, 120000);
   const played = m.homeScore !== '' || m.awayScore !== '';
+  const tlink = n => TFF_PID[lg] ? `<a href="#/tt/${lg}/${encodeURIComponent(n)}"><span>${esc(tffName(n))}</span></a>` : `<span>${esc(tffName(n))}</span>`;
   const logo = src => src ? `<img class="logo big" src="${esc(src)}" alt="" onerror="this.style.visibility='hidden'">` : '';
   const html = `<div class="card hero"><div class="row">
-    <div class="side">${logo(m.homeLogo)}<span>${esc(tffName(m.home))}</span></div>
+    <div class="side">${logo(m.homeLogo)}${tlink(m.home)}</div>
     <div class="mid"><div class="sc">${played ? `${esc(m.homeScore)} - ${esc(m.awayScore)}` : (m.iso ? esc(hm(m.iso)) : '')}</div><div class="st ${played ? 'post' : 'pre'}">${played ? t('st.FT') : (m.iso ? dshort(m.iso) : '')}</div></div>
-    <div class="side">${logo(m.awayLogo)}<span>${esc(tffName(m.away))}</span></div></div></div>`;
+    <div class="side">${logo(m.awayLogo)}${tlink(m.away)}</div></div></div>`;
   // goals, cards and substitutions all come with their minute ("MS" = after the final whistle)
   const nm = x => typeof x === 'string' ? x : (x?.name || '');
   const mn = x => { const v = typeof x === 'string' ? '' : (x?.minute || ''); return !v ? '' : /^\d/.test(v) ? v + "'" : v; };
@@ -1984,8 +2039,11 @@ async function viewProfile() {
   capi('GET', '/me').then(r => { if (acct && JSON.stringify(r.user) !== JSON.stringify(acct.user)) { acct.user = r.user; store.set('acct', acct); if (location.hash === '#/profile') render(true); } }).catch(() => {});
   const u = acct.user, me = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
   const swatches = AVATAR_COLORS.map(c => `<button class="swatch ${c === (u.color || hashColor(u.username)) ? 'on' : ''}" style="background:${c}" data-color="${c}" aria-label="${c}"></button>`).join('');
-  const favNow = u.fav ? `<div class="favcur">${img(u.fav.id, 'mid', u.fav.league)}<a href="#/team/${esc(u.fav.league)}/${esc(u.fav.id)}"><b>${esc(u.fav.name)}</b></a><button class="cbtn txt" data-fav-clear>✕ ${t('c.remove')}</button></div>` : `<div class="hint">${t('c.noFavTeam')}</div>`;
-  const mine = favs.slice(0, 12).map(f => `<button class="tcell" data-pick-team data-id="${esc(f.id)}" data-name="${esc(f.name)}" data-league="${esc(f.league)}">${img(f.id, 'mid', f.league)}<span>${esc(f.name)}</span></button>`).join('');
+  const FLs = favListOf(u);
+  const favNow = FLs.length ? FLs.map(f => favItemHtml(f, true)).join('') : `<div class="hint">${t('c.noFavs')}</div>`;
+  const addBtn = f => `<button class="tcell" data-favl-add data-k="${f.k}" data-id="${esc(f.id)}" data-name="${esc(f.name)}" data-league="${esc(f.league)}" data-sport="${esc(f.sport || 'soccer')}">${f.k === 'p' ? `<span class="pph sm" style="--pc:${pcol(f.name)}"><span class="pin_">${esc(initials(f.name))}</span></span>` : img(f.id, 'mid', f.league)}<span>${esc(f.name)}</span></button>`;
+  const has = f => FLs.some(x => x.k === f.k && String(x.id) === String(f.id));
+  const mine = [...favs.map(f => ({ k: 't', id: f.id, name: f.name, league: f.league, sport: 'soccer' })), ...pfavs.map(f => ({ k: 'p', id: f.id, name: f.name, league: f.league, sport: f.sport }))].filter(f => !has(f)).slice(0, 20).map(addBtn).join('');
   return `<div class="card profhead">${avatar(me, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
       <div><a href="#/user/${encodeURIComponent(u.username)}" style="color:var(--accent);font-size:13px">${t('c.publicView')} ›</a></div></div></div>
     ${u.role === 'admin' ? adminLink() : ''}
@@ -1993,9 +2051,9 @@ async function viewProfile() {
     <div class="card"><h2>🎨 ${t('c.avatarColor')}</h2><div class="swatches">${swatches}</div></div>
     <div class="card"><h2>📝 ${t('c.bio')}</h2><div class="form-block"><textarea id="pf-bio" maxlength="140" rows="3" placeholder="${t('c.bioPh')}">${esc(u.bio || '')}</textarea>
       <button class="btn" data-profile-save>${t('c.save')}</button><div class="hint" id="pf-msg"></div></div></div>
-    <div class="card"><h2>⭐ ${t('c.favTeam')}</h2><div class="form-block">${favNow}
+    <div class="card"><h2>⭐ ${t('c.favs')}</h2><div class="form-block">${favNow}
       ${mine ? `<div class="hint">${t('c.fromFavs')}</div><div class="tgrid">${mine}</div>` : ''}
-      <div class="hint">${t('c.searchTeam')}</div><input id="pf-q" type="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('search.ph'))}"><div id="pf-teams" class="tgrid"></div></div></div>
+      <div class="hint">${t('c.searchFav')}</div><input id="pf-q" type="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('search.ph'))}"><div id="pf-teams" class="tgrid"></div></div></div>
     <div class="card"><h2>🔒 ${t('c.security')}</h2><div class="form-block">
       <input id="pw-old" type="password" autocomplete="current-password" placeholder="${t('c.oldPass')}">
       <input id="pw-new" type="password" autocomplete="new-password" placeholder="${t('c.newPass')}">
@@ -2013,7 +2071,7 @@ async function viewUser(name) {
       <div class="hint">${t('c.joined', fmtD(u.created * 1000, { day: 'numeric', month: 'long', year: 'numeric' }))}</div></div></div>
     ${u.badges?.length ? `<div class="card">${badgeRow(u.badges)}</div>` : ''}
     ${u.bio ? `<div class="card"><div class="form-block ptext">${esc(u.bio)}</div></div>` : ''}
-    ${u.fav ? `<div class="card"><h2>⭐ ${t('c.favTeam')}</h2><a class="lrow" href="#/team/${esc(u.fav.league)}/${esc(u.fav.id)}" style="padding:12px;gap:12px">${img(u.fav.id, 'mid', u.fav.league)}<b>${esc(u.fav.name)}</b></a></div>` : ''}
+    ${favListOf(u).length ? `<div class="card"><h2>⭐ ${t('c.favs')}</h2><div class="form-block">${favListOf(u).map(f => favItemHtml(f, false)).join('')}</div></div>` : ''}
     <div class="card"><div class="statrow"><div><b>${u.posts}</b><small>${t('c.topics')}</small></div><div><b>${u.messages}</b><small>${t('c.msgs')}</small></div></div></div>
     ${own ? `<a class="btn" href="#/profile" style="display:block;text-align:center">${t('c.editProfile')}</a>` : ''}`;
 }
@@ -2044,6 +2102,29 @@ applyTheme();
 const themeCard = () => `<div class="card"><h2>🎨 ${t('theme.title')}</h2><div class="langs">${['auto', 'light', 'dark'].map(m =>
   `<button class="langbtn ${m === themeMode ? 'on' : ''}" data-theme-set="${m}">${t('theme.' + m)}</button>`).join('')}</div></div>`;
 
+// the profile's favourites: several teams and players (older accounts have just the one team)
+const favListOf = u => { const l = [...(u?.favlist || [])]; if (u?.fav && !l.some(f => f.k === 't' && String(f.id) === String(u.fav.id))) l.unshift({ k: 't', id: u.fav.id, name: u.fav.name, league: u.fav.league, sport: 'soccer' }); return l; };
+const favItemHtml = (f, rm) => `<div class="favcur">${f.k === 'p' ? `<span class="pph sm" style="--pc:${pcol(f.name)}"><span class="pin_">${esc(initials(f.name))}</span>${phImg(hsUrl(f.sport, f.league, f.id), f.name, f.sport)}</span>` : img(f.id, 'mid', f.league)}<a href="${f.k === 'p' ? `#/player/${esc(f.sport)}/${esc(f.league)}/${esc(f.id)}` : `#/team/${esc(f.league)}/${esc(f.id)}`}"><b>${esc(f.name)}</b></a>${rm ? `<button class="cbtn txt" data-favl-rm="${f.k}|${esc(f.id)}">✕ ${t('c.remove')}</button>` : ''}</div>`;
+document.addEventListener('click', async e => {
+  const add = e.target.closest('[data-favl-add]'), rm = e.target.closest('[data-favl-rm]');
+  if (!add && !rm) return;
+  e.preventDefault();
+  try {
+    let list = favListOf(acct.user), body = {};
+    if (add) {
+      const { k, id, name, league, sport } = add.dataset;
+      if (!list.some(f => f.k === k && String(f.id) === id)) list.push({ k, id, name, league, sport });
+      if (k === 't') { if (!acct.user.fav) body.fav = { id, name, league }; if (!isFav(id, league)) { favs = [...favs, { id, name, league }]; store.set('favs', favs); if (notif.key || notif.push) syncNotify().catch(() => {}); } }
+      else if (!isPFav(id, sport)) { pfavs = [...pfavs, { id, name, sport, league, team: '' }]; store.set('pfavs', pfavs); }
+    } else {
+      const [k, id] = rm.dataset.favlRm.split('|');
+      list = list.filter(f => !(f.k === k && String(f.id) === id));
+      if (k === 't' && String(acct.user.fav?.id) === id) { const nx = list.find(f => f.k === 't'); body.fav = nx ? { id: nx.id, name: nx.name, league: nx.league } : null; }
+    }
+    const r = await capi('POST', '/profile', { ...body, favlist: list });
+    acct.user = r.user; store.set('acct', acct); render(true);
+  } catch (err) { alert(errText(err)); }
+});
 let pfTimer = 0;
 document.addEventListener('input', e => {
   if (e.target.id !== 'pf-q') return;
@@ -2051,11 +2132,13 @@ document.addEventListener('input', e => {
   if (v.length < 2) { box.innerHTML = ''; return; }
   pfTimer = setTimeout(async () => {
     box.innerHTML = '<div class="hint">…</div>';
-    const j = await get(`${ESPN_Q}query=${encodeURIComponent(v)}&limit=12&type=team`, 120000).catch(() => ({}));
-    const list = ((j.results || []).find(r => r.type === 'team')?.contents || []).map(c => ({ id: uidId(c.uid, 't'), name: c.displayName, sport: c.sport, league: c.defaultLeagueSlug || '', sub: c.subtitle || '' }))
-      .filter(x => x.id && x.league && (x.sport === 'soccer' || LEAGUES.some(l => l.id === x.league)));
+    const [jt, jp] = await Promise.all(['team', 'player'].map(ty => get(`${ESPN_Q}query=${encodeURIComponent(v)}&limit=12&type=${ty}`, 120000).catch(() => ({}))));
+    const teams = ((jt.results || []).find(r => r.type === 'team')?.contents || []).map(c => ({ k: 't', id: uidId(c.uid, 't'), name: c.displayName, sport: 'soccer', league: c.defaultLeagueSlug || '', sub: c.subtitle || '', sp: c.sport }))
+      .filter(x => x.id && x.league && (x.sp === 'soccer' || LEAGUES.some(l => l.id === x.league)));
+    const players = ((jp.results || []).find(r => r.type === 'player')?.contents || []).map(c => ({ k: 'p', id: uidId(c.uid, 'a'), name: c.displayName, sport: c.sport || 'soccer', league: c.defaultLeagueSlug || c.sport || 'soccer', sub: [c.subtitle, c.description].filter(Boolean).join(' · ') })).filter(x => x.id);
+    const list = [...teams, ...players];
     if (document.getElementById('pf-q')?.value.trim() !== v) return;
-    box.innerHTML = list.length ? list.map(x => `<button class="tcell" data-pick-team data-id="${esc(x.id)}" data-name="${esc(x.name)}" data-league="${esc(x.league)}">${img(x.id, 'mid', x.league)}<span>${esc(x.name)}<small class="hint" style="display:block">${esc(x.sub)}</small></span></button>`).join('') : `<div class="hint">${t('search.none')}</div>`;
+    box.innerHTML = list.length ? list.map(x => `<button class="tcell" data-favl-add data-k="${x.k}" data-id="${esc(x.id)}" data-name="${esc(x.name)}" data-league="${esc(x.league)}" data-sport="${esc(x.sport)}">${x.k === 'p' ? `<span class="pph sm" style="--pc:${pcol(x.name)}"><span class="pin_">${esc(initials(x.name))}</span></span>` : img(x.id, 'mid', x.league)}<span>${esc(x.name)}<small class="hint" style="display:block">${x.k === 'p' ? '👤 ' : ''}${esc(x.sub)}</small></span></button>`).join('') : `<div class="hint">${t('search.none')}</div>`;
   }, 300);
 });
 document.addEventListener('click', async e => {
@@ -2454,7 +2537,7 @@ document.addEventListener('click', async e => {
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, vplayer: viewVPlayer, profile: viewProfile, user: viewUser,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -2486,13 +2569,13 @@ async function render(silent = false) {
   if (['forum', 'post', 'user', 'leaderboard', 'notifs'].includes(route)) lastTab = 'forum';
   if (route === 'profile' || route === 'admin') lastTab = 'profile';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'search', 'compare', 'admin'].includes(route);
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin'].includes(route);
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   let instant = null;
   if (!silent) {
     // a different match/team opens on its first tab
-    if (location.hash !== lastHash) { delete segState.match; delete segState.team; delete segState.player; }
+    if (location.hash !== lastHash) { delete segState.match; delete segState.team; delete segState.player; delete segState.tt; }
     lastHash = location.hash;
     const hit = cacheable(route) && pageCache.get(pkey());
     if (hit && Date.now() - hit.t < 600000) {
@@ -2741,6 +2824,7 @@ document.addEventListener('change', e => {
   if (e.target.matches('[data-team-season]')) { location.replace('#/team/' + e.target.dataset.teamSeason + '/' + e.target.value); return; }
   if (e.target.matches('[data-league-season]')) { leagueSeason[e.target.dataset.leagueSeason] = +e.target.value; location.replace(`#/league/${e.target.dataset.leagueSeason}/fikstur`); render(); return; }
   if (e.target.matches('[data-month-pick]')) { location.replace(`#/league/${e.target.dataset.monthPick}/fikstur/${e.target.value}`); return; }
+  { const gb = e.target.closest?.('[data-tgrp]'); if (gb) { const [lg, id] = gb.dataset.tgrp.split('|'); store.set('tgrp', { ...store.get('tgrp', {}), [lg]: id }); pageCache.clear(); render(); return; } }
   if (e.target.matches('[data-ksl-week]')) { location.replace('#/league/' + (e.target.dataset.kslWeek || 'tur.w.1') + '/fikstur/' + e.target.value); return; }
   if (e.target.matches('[data-tff-round]')) { location.replace('#/league/tur.cup/fikstur/' + e.target.value); return; }
   if (e.target.matches('[data-round-pick]')) { location.replace(`#/league/${e.target.dataset.roundPick}/fikstur/${e.target.value}`); return; }
