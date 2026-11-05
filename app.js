@@ -279,7 +279,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v50';
+const APP_VERSION = 'v51';
 let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
 let actx = null;
 const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
@@ -749,6 +749,167 @@ async function matchThreadCard(key, h, a) {
   if (!acct) return '';
   return `<div class="card mthread"><span>💬 ${t('mt.none')}</span><button class="btn" data-mthread="${esc(key)}" data-h="${esc(h.team.displayName)}" data-a="${esc(a.team.displayName)}">${t('mt.create')}</button></div>`;
 }
+// minute-by-minute commentary (ESPN), newest first; key events when there is no commentary
+function commentaryHtml(j) {
+  const com = (j.commentary || []).filter(c => c.text);
+  const list = com.length ? com.map(c => ({ m: c.time?.displayValue || '', tx: c.text, k: c.play?.type?.text || '' }))
+    : (j.keyEvents || []).map(k => ({ m: k.clock?.displayValue || '', tx: k.text || k.shortText || k.type?.text || '', k: k.type?.text || '' })).filter(x => x.tx);
+  if (!list.length) return '';
+  const ic = k => /goal/i.test(k) ? '⚽' : /red/i.test(k) ? '🟥' : /yellow/i.test(k) ? '🟨' : /substitution/i.test(k) ? '🔁' : /var|review/i.test(k) ? '📺' : /penalty/i.test(k) ? '🎯' : /corner/i.test(k) ? '🚩' : /half|start|end|kickoff/i.test(k) ? '⏱️' : '•';
+  return `<div class="card comcard">${[...list].reverse().map(x => `<div class="comrow ${/goal/i.test(x.k) ? 'goal' : ''}"><b>${esc(x.m)}</b><span class="cic">${ic(x.k)}</span><span>${esc(x.tx)}</span></div>`).join('')}</div><div class="hint" style="padding:0 14px 12px">${t('com.src')}</div>`;
+}
+// match highlights: ESPN's own clip when it has one, otherwise a YouTube search for the official summary
+const hlUrl = (h, a, date, j) => j?.videos?.[0]?.links?.web?.href || `https://www.youtube.com/results?search_query=${encodeURIComponent(`${h.team.displayName} ${a.team.displayName} ${LANG === 'tr' ? 'maç özeti' : 'highlights'} ${new Date(date).getFullYear()}`)}`;
+// second screen: big score, latest events and the match chat side by side (landscape), refreshed every few seconds
+async function viewLiveScreen(league, id) {
+  const j = await get(`${api(league)}/summary?event=${id}`, 4000);
+  if (league === 'all' && j.header?.league?.slug) league = j.header.league.slug;
+  const comp = j.header.competitions[0], [h, a] = sides(comp), s = status(comp.status, league);
+  setTitle(`${h.team.abbreviation || h.team.displayName} – ${a.team.abbreviation || a.team.displayName}`);
+  const evs = (j.keyEvents || []).filter(k => /goal|card|substitution|penalty|var/i.test(k.type?.text || '')).slice(-6).reverse();
+  const ic = k => /goal/i.test(k) ? '⚽' : /red/i.test(k) ? '🟥' : /yellow/i.test(k) ? '🟨' : /substitution/i.test(k) ? '🔁' : '📺';
+  const side = c => `<div class="ssteam">${img(c.team.id, 'big', league)}<b>${esc(c.team.shortDisplayName || c.team.displayName)}</b></div>`;
+  return `<div class="ssgrid"><div class="ssleft"><div class="card ssscore">${side(h)}<div class="ssmid"><div class="sssc">${s.show ? `${esc(scoreOf(h))}–${esc(scoreOf(a))}` : esc(hm(comp.date))}</div><div class="ssst ${s.cls}">${s.cls === 'live' ? liveHtml(s) : esc(s.txt || dshort(comp.date))}</div></div>${side(a)}</div>
+    <div class="card ssev">${evs.map(k => `<div class="comrow"><b>${esc(k.clock?.displayValue || '')}</b><span class="cic">${ic(k.type?.text || '')}</span><span>${esc(k.shortText || k.text || '')}</span></div>`).join('') || `<div class="empty">${t('ss.noEv')}</div>`}</div>
+    <div class="ssbtns"><button class="btn ghost" data-ss-full>⛶ ${t('ss.full')}</button><a class="btn ghost" href="#/match/${esc(league)}/${esc(id)}">${t('ss.details')}</a></div></div>
+    <div class="ssright">${chatHtml('m-soccer-' + id)}</div></div>`;
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('[data-ss-full]')) return;
+  const el = document.documentElement;
+  (document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape').catch(() => {}))).catch?.(() => {});
+});
+// one chat room per club ("Tribün"): on the team page and on its own page from the favourites
+const roomId = (league, id) => ('club-' + league + '-' + id).replace(/[^A-Za-z0-9._-]/g, '').slice(0, 64);
+async function viewRoom(league, id, rawName) {
+  const name = decodeURIComponent(rawName || '') || t('th.team'); setTitle('💬 ' + name);
+  return `<div class="card roomhead"><a href="#/team/${esc(league)}/${esc(id)}">${img(id, 'mid', league)}<b>${esc(name)}</b></a><span class="hint">${t('room.hint', esc(name))}</span></div>` + chatHtml(roomId(league, id));
+}
+// polls in forum topics: options when opening a topic (rank 'Kaptan' or admin), votes and results inside the topic
+const pollFields = () => (isAdminUser() || (rankMap.get(acct?.user?.username) ?? 0) >= 3)
+  ? `<details class="pollmk"><summary>📊 ${t('tp.add')}</summary>${[1, 2, 3, 4].map(i => `<input class="pollopt" maxlength="60" placeholder="${esc(t('tp.opt', i))}">`).join('')}<div class="hint">${t('tp.hint')}</div></details>` : '';
+async function topicPollHtml(pid) {
+  let d; try { d = await capi('GET', '/tpoll/' + pid); } catch { return ''; }
+  const show = d.mine != null || d.total >= 3;
+  return `<div class="card tpoll" data-tpoll="${pid}"><h2>📊 ${t('tp.title')} <small class="hint">· ${t('poll.n', d.total)}</small></h2>${d.options.map((o, i) => { const pc = d.total ? Math.round(d.counts[i] / d.total * 100) : 0;
+    return `<button class="tpopt ${d.mine === i ? 'on' : ''}" data-tpvote="${pid}|${i}"><span>${esc(o)}</span>${show ? `<b>${pc}%</b><i style="width:${pc}%"></i>` : ''}</button>`; }).join('')}${acct ? '' : `<div class="hint" style="padding:0 14px 12px">${t('c.needLogin')}</div>`}</div>`;
+}
+document.addEventListener('click', async e => {
+  const v = e.target.closest('[data-tpvote]'); if (!v) return;
+  const [pid, opt] = v.dataset.tpvote.split('|');
+  try { await capi('POST', '/tpoll/' + pid, { opt: +opt }); const h = await topicPollHtml(pid); v.closest('.tpoll').outerHTML = h; } catch (err) { alert(errText(err)); }
+});
+// ---------- games hub: prediction league, weekend fantasy, daily quiz
+const gamesBar = active => `<div class="chips"><a data-replace href="#/leaderboard" class="${active === 'lb' ? 'on' : ''}">🎯 ${t('lb.tab')}</a><a data-replace href="#/fantasy" class="${active === 'fantasy' ? 'on' : ''}">⚽ ${t('fy.tab')}</a><a data-replace href="#/quiz" class="${active === 'quiz' ? 'on' : ''}">🧠 ${t('qz.tab')}</a></div>`;
+async function viewGames() {
+  setTitle(t('gm.tab'));
+  const tile = (href, ic, k) => `<a class="card gametile" href="${href}"><span class="gic">${ic}</span><span><b>${t(k)}</b><small>${t(k + 'D')}</small></span><i>›</i></a>`;
+  return communityNav('games') + tile('#/leaderboard', '🎯', 'gm.pred') + tile('#/fantasy', '⚽', 'gm.fy') + tile('#/quiz', '🧠', 'gm.qz');
+}
+// ---------- following: the feed of the members I follow
+async function viewFeed() {
+  setTitle(t('fd.tab'));
+  if (!acct) return communityNav('feed') + authForm();
+  let d; try { d = await capi('GET', '/feed'); } catch (e) { return communityNav('feed') + `<div class="empty">⚠️ ${esc(errText(e))}</div>`; }
+  const row = x => {
+    const who = `<b>${nameHtml(x)}</b>`, when = `<small class="hint">${ago(x.created)}</small>`;
+    // rows are not links themselves (the name inside is one): a tap anywhere else opens the item
+    if (x.k === 'post') return `<div class="feedrow postrow" data-href="#/post/${x.id}" data-user="${esc(x.username)}">📝 ${who} ${t('fd.post')}<div>${esc(x.tx)}</div>${when}</div>`;
+    if (x.k === 'comment') return `<div class="feedrow postrow" data-href="#/post/${x.id}" data-user="${esc(x.username)}">💬 ${who} ${t('fd.comment', esc(x.title || ''))}<div>“${esc(String(x.tx).slice(0, 140))}”</div>${when}</div>`;
+    const [lg, ev] = String(x.id).split(':');
+    return `<div class="feedrow postrow" data-href="#/match/${esc(lg)}/${esc(ev)}" data-user="${esc(x.username)}">🎯 ${who} ${t('fd.pred')}<div>${esc(x.tx)}${x.settled === 1 ? ` · <b>+${x.pts}</b>` : ''}</div>${when}</div>`;
+  };
+  const fol = d.following.length ? `<div class="card"><h2>👥 ${t('fd.following', d.following.length)}</h2><div class="folrow">${d.following.map(u => `<a href="#/user/${encodeURIComponent(u.username)}">${avatar(u, 36)}<small>${esc(u.username)}</small></a>`).join('')}</div></div>` : '';
+  return communityNav('feed') + fol + (d.items.length ? `<div class="card">${d.items.map(row).join('')}</div>` : `<div class="empty">${t(d.following.length ? 'fd.empty' : 'fd.none')}<br><br><a href="#/members" style="color:var(--accent)">${t('fd.find')} ›</a></div>`);
+}
+async function followBox(name) {
+  const d = await capi('GET', '/follow/' + encodeURIComponent(name)).catch(() => null);
+  if (!d) return '';
+  const own = acct?.user?.username === name;
+  return `<div class="card"><div class="statrow"><div><b>${d.followers}</b><small>${t('fl.followers')}</small></div><div><b>${d.following}</b><small>${t('fl.following')}</small></div></div>${acct && !own ? `<div class="form-block"><button class="btn ${d.iFollow ? 'ghost' : ''}" data-follow="${esc(name)}" data-on="${d.iFollow ? 0 : 1}">${d.iFollow ? '✓ ' + t('fl.unfollow') : '➕ ' + t('fl.follow')}</button></div>` : ''}</div>`;
+}
+document.addEventListener('click', async e => {
+  const f = e.target.closest('[data-follow]'); if (!f) return;
+  try { await capi('POST', '/follow', { username: f.dataset.follow, on: f.dataset.on === '1' }); const box = f.closest('.card'); box.outerHTML = await followBox(f.dataset.follow); } catch (err) { alert(errText(err)); }
+});
+// ---------- weekend fantasy
+let fyPick = null;
+async function viewFantasy(which) {
+  setTitle(t('fy.tab'));
+  let d; try { d = await capi('GET', '/fantasy' + (which === 'last' ? '/last' : '')); } catch (e) { return communityNav('fantasy') + `<div class="empty">⚠️ ${esc(errText(e))}</div>`; }
+  const fmt = s => fmtD(s * 1000, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  if (fyPick === null || fyPick.week !== d.week) fyPick = { week: d.week, list: d.mine.map(p => ({ id: p.id, name: p.name, team: p.team })) };
+  const state = d.finished ? t('fy.finished') : d.locked ? t('fy.live', fmt(d.end)) : t('fy.open', fmt(d.start));
+  const mine = d.locked ? (d.mine.length ? d.mine.map(p => `<div class="fyrow"><b>${esc(p.name)}</b><small>${esc(p.team)}</small><span class="fygoals">${p.goals ? '⚽'.repeat(Math.min(p.goals, 5)) + ` +${p.goals * 5}` : '—'}</span></div>`).join('') : `<div class="empty" style="padding:14px">${t('fy.noTeam')}</div>`)
+    : `${fyPick.list.map((p, i) => `<div class="fyrow"><b>${esc(p.name)}</b><small>${esc(p.team)}</small><button class="cbtn txt" data-fy-rm="${i}">✕</button></div>`).join('')}${acct ? (fyPick.list.length < 5 ? `<div class="form-block"><input id="fy-q" type="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('fy.search', 5 - fyPick.list.length))}"><div id="fy-res"></div></div>` : '') + `<div class="form-block"><button class="btn" data-fy-save ${fyPick.list.length ? '' : 'disabled'}>${t('fy.save')}</button><div class="hint" id="fy-msg"></div></div>` : `<div class="form-block"><div class="hint">${t('c.needLogin')}</div></div>`}`;
+  const board = d.board.length ? `<div class="card"><h2>🏆 ${t('fy.board')}</h2>${d.board.map((r, i) => `<div class="lbrow"><span class="rk">${i + 1}</span>${avatar(r, 28)}<span class="nm">${nameHtml(r)}</span><b>${r.pts}</b></div>`).join('')}</div>` : '';
+  const past = d.past.length ? `<div class="card"><h2>🥇 ${t('fy.past')}</h2>${d.past.map(p => `<div class="wkrow"><small>${esc(fmtD(p.week * 1000, { day: 'numeric', month: 'short' }))}</small><a href="#/user/${encodeURIComponent(p.username)}">🥇 ${esc(p.username)} <small>${p.pts}</small></a></div>`).join('')}</div>` : '';
+  return communityNav('fantasy') + `<div class="card"><div class="form-block"><b>⚽ ${t('fy.title')}</b><div class="hint">${t('fy.rules')}</div><div class="wknext">⏳ ${state}</div><div class="chips" style="padding:0"><a data-replace href="#/fantasy" class="${which !== 'last' ? 'on' : ''}">${t('fy.thisWeek')}</a><a data-replace href="#/fantasy/last" class="${which === 'last' ? 'on' : ''}">${t('fy.lastWeek')}</a></div></div></div>
+    <div class="card"><h2>👕 ${t('fy.myTeam')} (${(d.locked ? d.mine : fyPick.list).length}/5)</h2>${mine}</div>` + board + past;
+}
+document.addEventListener('input', e => {
+  if (e.target.id !== 'fy-q') return;
+  clearTimeout(window._fyq);
+  window._fyq = setTimeout(async () => {
+    const q = e.target.value.trim(), box = document.getElementById('fy-res'); if (!box) return;
+    if (q.length < 3) { box.innerHTML = ''; return; }
+    const j = await get(`${ESPN_Q}query=${encodeURIComponent(q)}&limit=10&type=player`, 120000).catch(() => null);
+    const ps = ((j?.results || []).find(r => r.type === 'player')?.contents || []).filter(c => (c.sport || 'soccer') === 'soccer');
+    box.innerHTML = ps.map(c => { const id = uidId(c.uid, 'a'); return id ? `<button class="lrow fyadd" data-fy-add="${esc(id)}" data-name="${esc(c.displayName)}" data-team="${esc(c.subtitle || '')}"><span class="nm" style="padding:8px 10px;text-align:left">${esc(c.displayName)}<small class="hint" style="display:block">${esc(c.subtitle || '')}</small></span><span class="go">＋</span></button>` : ''; }).join('') || `<div class="hint">${t('search.none')}</div>`;
+  }, 350);
+});
+document.addEventListener('click', async e => {
+  const ad = e.target.closest('[data-fy-add]'), rm = e.target.closest('[data-fy-rm]'), sv = e.target.closest('[data-fy-save]');
+  if (!ad && !rm && !sv) return;
+  if (ad && fyPick && fyPick.list.length < 5 && !fyPick.list.some(p => p.id === ad.dataset.fyAdd)) { fyPick.list.push({ id: ad.dataset.fyAdd, name: ad.dataset.name, team: ad.dataset.team }); render(true); return; }
+  if (rm && fyPick) { fyPick.list.splice(+rm.dataset.fyRm, 1); render(true); return; }
+  if (sv && fyPick) { const msg = document.getElementById('fy-msg'); try { await capi('POST', '/fantasy', { players: fyPick.list }); msg.textContent = '✅ ' + t('fy.saved'); } catch (err) { msg.textContent = '❌ ' + errText(err); } }
+});
+// ---------- daily quiz
+let qzSel = {};
+async function viewQuiz() {
+  setTitle(t('qz.tab'));
+  let d; try { d = await capi('GET', '/quiz'); } catch (e) { return communityNav('quiz') + `<div class="empty">⚠️ ${esc(e.code === 'quiz_unavailable' ? t('qz.wait') : errText(e))}</div>`; }
+  if (qzSel.day !== d.day) qzSel = { day: d.day, a: {} };
+  const qtext = q => t('qz.' + q.type, esc(q.subject));
+  const done = d.mine;
+  const qs = d.questions.map((q, i) => `<div class="card qzq"><h2>${i + 1}. ${qtext(q)}</h2><div class="qzopts">${q.options.map((o, k) => {
+    const cls = done ? (k === done.answers[i] ? 'ok' : '') : qzSel.a[i] === k ? 'on' : '';
+    return `<button class="qzopt ${cls}" ${done ? 'disabled' : ''} data-qz="${i}|${k}">${esc(o)}</button>`; }).join('')}</div></div>`).join('');
+  const head = `<div class="card"><div class="form-block"><b>🧠 ${t('qz.title')}</b><div class="hint">${t('qz.rules')}</div>${done ? `<div class="wknext">✅ ${t('qz.score', done.score, d.questions.length)}</div>` : ''}</div></div>`;
+  const send = done ? '' : acct ? `<div class="form-block"><button class="btn" data-qz-send>${t('qz.send')}</button><div class="hint" id="qz-msg"></div></div>` : `<div class="empty">${t('c.needLogin')}</div>`;
+  const board = d.board.length ? `<div class="card"><h2>🏆 ${t('qz.board')}</h2>${d.board.map((r, i) => `<div class="lbrow"><span class="rk">${i + 1}</span><span class="nm"><a href="#/user/${encodeURIComponent(r.username)}">${esc(r.username)}</a></span><b>${r.score}/5</b></div>`).join('')}</div>` : '';
+  return communityNav('quiz') + head + qs + send + board;
+}
+document.addEventListener('click', async e => {
+  const o = e.target.closest('[data-qz]');
+  if (o) { const [i, k] = o.dataset.qz.split('|').map(Number); qzSel.a[i] = k; o.parentElement.querySelectorAll('.qzopt').forEach(b => b.classList.toggle('on', b === o)); return; }
+  if (!e.target.closest('[data-qz-send]')) return;
+  const msg = document.getElementById('qz-msg'), n = document.querySelectorAll('.qzq').length;
+  if (Object.keys(qzSel.a).length < n) { msg.textContent = t('qz.all'); return; }
+  try { const r = await capi('POST', '/quiz', { answers: Array.from({ length: n }, (_, i) => qzSel.a[i]) }); render(true); } catch (err) { msg.textContent = '❌ ' + errText(err); }
+});
+// voice search (Web Speech API, works in Chrome on Android): "Beşiktaş", "Vlahovic", "Galatasaray sıradaki maç"
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-voice]'); if (!b) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition, msg = document.getElementById('vs-msg');
+  if (!SR) { msg.textContent = t('vs.noSupport'); return; }
+  const r = new SR(); r.lang = LOCALE(); r.interimResults = false; r.maxAlternatives = 1;
+  b.classList.add('on'); msg.textContent = '🎙️ ' + t('vs.listening');
+  r.onresult = async ev => {
+    let txt = ev.results[0][0].transcript.trim();
+    const next = /(sıradaki|sonraki|ne zaman|next match|when)/i.test(txt);
+    txt = txt.replace(/\b(sıradaki maç(ı)?|sonraki maç(ı)?|maçı ne zaman|ne zaman|next match|when do .* play)\b/gi, '').replace(/['’](n[ıiuü]n|[ıiuü]n|y[ıiuü])\b/gi, '').trim();
+    const sq = document.getElementById('sq'); if (sq) { sq.value = txt; }
+    msg.textContent = `“${ev.results[0][0].transcript}”`;
+    await runSearch(txt);
+    // "… sıradaki maç": open the first team found straight away
+    if (next) { const a = document.querySelector('#sres a[href^="#/team/"]'); if (a) location.hash = a.getAttribute('href'); }
+  };
+  r.onerror = () => { msg.textContent = t('vs.noSupport'); };
+  r.onend = () => b.classList.remove('on');
+  try { r.start(); } catch { b.classList.remove('on'); }
+});
 async function viewMatch(league, id) {
   if (sportOf(league) !== 'soccer') return viewUsMatch(league, id);
   setTitle(lname(leagueOf(league)));
@@ -765,7 +926,7 @@ async function viewMatch(league, id) {
   let html = `<div class="card hero"><div class="row">${sideHtml(h)}
     <div class="mid"><div class="sc">${s.show ? `${esc(scoreOf(h))} - ${esc(scoreOf(a))}` : s.cls === 'ppd' ? '– : –' : esc(hm(comp.date))}</div>
     <div class="st ${s.cls}">${s.cls === 'pre' ? dshort(comp.date) : s.cls === 'live' ? `<span class="livetag">${t('live')}</span> ${liveHtml(s)}` : esc(s.txt)}</div><!--tv--></div>
-    ${sideHtml(a)}</div></div>`;
+    ${sideHtml(a)}</div><div class="heroact"><a class="cbtn txt" href="#/live/${esc(league)}/${esc(id)}">📺 ${t('ss.btn')}</a>${s.cls === 'post' ? `<a class="cbtn txt" href="${esc(hlUrl(h, a, comp.date, j))}" target="_blank" rel="noopener">🎬 ${t('hl.btn')}</a>` : ''}</div></div>`;
 
   // events as a timeline: home on the left, away on the right, minute in the middle
   const homeId = h.team.id;
@@ -851,11 +1012,11 @@ async function viewMatch(league, id) {
   if (threadHtml) html = html.replace('<!--tv-->', '<!--tv-->') + threadHtml;
   const [mvHtml, prHtml] = await Promise.all([motmHtml(mkey, rosters, s).catch(() => ''), predictHtml(mkey, comp, s, h, a, probFrom(j)).catch(() => '')]);
   const T = { ev: [t('events'), evHtml], st: [t('stats'), stHtml], lu: [t('lineups'), luHtml], rc: [t('recent'), recentHtml(j, [h, a])], inf: [t('info'), infoHtml + calBtn(`${h.team.displayName} – ${a.team.displayName}`, comp.date, [gi.venue?.fullName, lname(leagueOf(league))].filter(Boolean).join(', '))],
-    ch: [t('c.chat'), chatHtml('m-soccer-' + id)], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml], cmp: ['⚖️ ' + t('cmp.tab'), compareHtml(j, h, a, rk)],
+    ch: [t('c.chat'), chatHtml('m-soccer-' + id)], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml], ...(commentaryHtml(j) ? { com: ['🎙️ ' + t('com.tab'), commentaryHtml(j)] } : {}), cmp: ['⚖️ ' + t('cmp.tab'), compareHtml(j, h, a, rk)],
     ...(s.cls !== 'pre' && s.cls !== 'ppd' ? { rt: ['⭐ ' + t('rt.tab'), lazy(ratingsHtml(league, id, rosters, s))] } : {}) };
   if (s.cls === 'pre') T.inf[1] = lazy(pollHtml(league, id, h, a)) + T.inf[1];
   if (rk.size) T.tb = [t('o.standings'), await standingsHtml(league, undefined, [h.team.id, a.team.id]).catch(() => `<div class="empty">${t('noTable')}</div>`)];
-  const order = (s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'cmp', 'lu', 'rc', 'pr', 'tb', 'ch', 'ev', 'st', 'mv'] : ['ev', 'st', 'lu', 'rt', 'tb', 'cmp', 'rc', 'inf', 'ch', 'mv', 'pr']).filter(x => T[x]);
+  const order = (s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'cmp', 'lu', 'rc', 'pr', 'tb', 'ch', 'ev', 'st', 'mv'] : ['ev', 'com', 'st', 'lu', 'rt', 'tb', 'cmp', 'rc', 'inf', 'ch', 'mv', 'pr']).filter(x => T[x]);
   html += seg(k, order.map(x => T[x][0])) + order.map((x, i) => pane(k, i, T[x][1])).join('');
   return html;
 }
@@ -1300,8 +1461,9 @@ async function viewTeam(league, id, season) {
   return tbPane; }));
   const isSoc = sportOf(league) === 'soccer';
   const trP = isSoc ? newsFor(`${name} transfer`).catch(() => null) : null;
-  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum'), ...(isSoc ? ['🔁 ' + t('tr.tab'), '🏛️ ' + t('lg.clubTab')] : [])]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, lazy(newsOr(newsP, t('news.title')))) + pane(k, 5, lazy(forumP))
-    + (isSoc ? pane(k, 6, lazy(trP.then(n => n?.length ? newsCard(n, t('tr.title', name)) : `<div class="empty">${t('tr.none')}</div>`))) + pane(k, 7, lazy(clubLegendsHtml(name).catch(() => `<div class="empty">${t('noInfo')}</div>`))) : '');
+  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum'), ...(isSoc ? ['🔁 ' + t('tr.tab'), '🏛️ ' + t('lg.clubTab')] : []), '💬 ' + t('room.tab')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, lazy(newsOr(newsP, t('news.title')))) + pane(k, 5, lazy(forumP))
+    + (isSoc ? pane(k, 6, lazy(trP.then(n => n?.length ? newsCard(n, t('tr.title', name)) : `<div class="empty">${t('tr.none')}</div>`))) + pane(k, 7, lazy(clubLegendsHtml(name).catch(() => `<div class="empty">${t('noInfo')}</div>`))) : '')
+    + pane(k, isSoc ? 8 : 6, `<div class="hint" style="padding:4px 6px 8px">${t('room.hint', esc(name))}</div>` + chatHtml(roomId(league, id)));
 }
 
 
@@ -1508,7 +1670,7 @@ async function viewLegend(qid) {
 }
 async function viewSearch() {
   setTitle(t('search.title'));
-  return `<div class="card"><div class="form-block"><input id="sq" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('search.ph'))}"></div></div><div id="sres"><div class="empty">${t('search.hint')}</div></div>`;
+  return `<div class="card"><div class="form-block sqrow"><input id="sq" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('search.ph'))}"><button class="micbtn" data-voice aria-label="${esc(t('vs.mic'))}">🎤</button></div><div class="hint" id="vs-msg" style="padding:0 14px 8px"></div></div><div id="sres"><div class="empty">${t('search.hint')}</div></div>`;
 }
 document.addEventListener('input', e => {
   if (e.target.id !== 'sq') return;
@@ -1622,7 +1784,7 @@ async function viewNotifs() {
   if (!acct) return communityNav('notifs') + authForm();
   let d; try { d = await capi('GET', '/notifs'); } catch (e) { return communityNav('notifs') + `<div class="empty">⚠️ ${esc(errText(e))}</div>`; }
   const txt = i => t('nt.' + i.kind, i.who);
-  const html = d.items.length ? `<div class="card">${d.items.map(i => `<a class="lrow ${i.read ? '' : 'unread'}${/^mod_/.test(i.kind) ? ' modn' : ''}" href="${i.kind === 'weekly' ? '#/leaderboard' : i.kind === 'dm' ? '#/dm/' + encodeURIComponent(i.who) : /^mod_/.test(i.kind) || !i.post_id ? '#/user/' + encodeURIComponent(i.who) : '#/post/' + i.post_id}"><span class="nm" style="padding:10px 12px">${esc(txt(i))}<small class="hint" style="display:block">“${esc(i.text || '')}” · ${ago(i.created)}</small></span></a>`).join('')}</div>` : `<div class="empty">${t('nt.empty')}</div>`;
+  const html = d.items.length ? `<div class="card">${d.items.map(i => `<a class="lrow ${i.read ? '' : 'unread'}${/^mod_/.test(i.kind) ? ' modn' : ''}" href="${i.kind === 'weekly' ? '#/leaderboard' : i.kind === 'fantasy' ? '#/fantasy/last' : i.kind === 'dm' ? '#/dm/' + encodeURIComponent(i.who) : /^mod_/.test(i.kind) || !i.post_id ? '#/user/' + encodeURIComponent(i.who) : '#/post/' + i.post_id}"><span class="nm" style="padding:10px 12px">${esc(txt(i))}<small class="hint" style="display:block">“${esc(i.text || '')}” · ${ago(i.created)}</small></span></a>`).join('')}</div>` : `<div class="empty">${t('nt.empty')}</div>`;
   if (d.unread) { capi('POST', '/notifs/read').then(() => { notifCount = 0; notifAt = 0; document.querySelectorAll('.nbadge,.tbadge').forEach(x => x.remove()); pollNotifs(true); }).catch(() => {}); }
   return communityNav('notifs') + html;
 }
@@ -1726,7 +1888,8 @@ async function viewFavs() {
   }))).join('');
   const html = (espnF.length ? await favCards(espnF) : '') + tffCards + xHtml + (mineP.length ? await favPlayers(mineP) : '');
   const calAll = favs.length || xfavs.length ? `<div class="form-block"><button class="btn ghost" data-ics-all>📅 ${t('o.calAll')}</button></div>` : '';
-  return sportBar() + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`) + calAll;
+  const rooms = espnF.length ? `<div class="card"><h2>💬 ${t('room.mine')}</h2>${espnF.map(f => `<a class="lrow" href="#/room/${esc(f.league)}/${esc(f.id)}/${encodeURIComponent(f.name)}">${img(f.id, '', f.league)}<span class="nm" style="padding:10px 12px">${esc(f.name)} ${t('room.tab')}</span><span class="go">›</span></a>`).join('')}</div>` : '';
+  return sportBar() + rooms + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`) + calAll;
 }
 async function favCards(list) {
   const all = await Promise.all(list.map(f => teamEvents(f.id, f.league).then(e => ({ f, e })).catch(() => ({ f, e: { past: [], live: [], next: [] } }))));
@@ -2198,7 +2361,7 @@ function tvFor(items, iso, home, away, league) {
 }
 
 // ---- Notifications (Cloudflare Worker + ntfy) ----
-const NPREFS = ['goal', 'red', 'var', 'remind', 'start', 'ht', 'end'];
+const NPREFS = ['goal', 'red', 'var', 'remind', 'start', 'ht', 'end', 'summary'];
 let notif = store.get('notify', null);
 if (!notif) {
   const rnd = [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 12);
@@ -2397,6 +2560,7 @@ async function viewUser(name) {
     ${u.badges?.length ? `<div class="card">${badgeRow(u.badges)}</div>` : ''}
     ${u.bio ? `<div class="card"><div class="form-block ptext">${esc(u.bio)}</div></div>` : ''}
     ${favListOf(u).length ? `<div class="card"><h2>⭐ ${t('c.favs')}</h2><div class="form-block">${favListOf(u).map(f => favItemHtml(f, false)).join('')}</div></div>` : ''}
+    ${await followBox(u.username)}
     <div class="card"><div class="statrow"><div><b>${u.posts}</b><small>${t('c.topics')}</small></div><div><b>${u.messages}</b><small>${t('c.msgs')}</small></div></div></div>
     ${own ? `<a class="btn" href="#/profile" style="display:block;text-align:center">${t('c.editProfile')}</a>` : acct ? `<div class="card"><div class="form-block profact"><a class="btn" href="#/dm/${encodeURIComponent(u.username)}">✉️ ${t('dm.send')}</a><button class="btn ghost" data-block-user="${esc(u.username)}">${blocked.has(u.username) ? '✅ ' + t('dm.unblock') : '⛔ ' + t('dm.block')}</button></div></div>` : ''}${u.mod && !own ? umodCard(u) : ''}`;
 }
@@ -2543,7 +2707,7 @@ document.addEventListener('click', async e => {
 
 // ---------- forum
 let notifCount = 0, notifAt = 0;
-const communityNav = active => `<div class="seg"><a data-replace href="#/forum" class="${active === 'forum' ? 'on' : ''}">💬 ${t('cat.topics')}</a><a data-replace href="#/leaderboard" class="${active === 'lb' ? 'on' : ''}">🏆 ${t('lb.tab')}</a><a data-replace href="#/notifs" class="${active === 'notifs' ? 'on' : ''}">🔔 ${t('nt.title')}${notifCount ? `<i class="nbadge">${notifCount}</i>` : ''}</a><a data-replace href="#/dm" class="${active === 'dm' ? 'on' : ''}">✉️ ${t('dm.title')}${dmUnread ? `<i class="nbadge">${dmUnread}</i>` : ''}</a><a data-replace href="#/members" class="${active === 'members' ? 'on' : ''}">👥 ${t('u.members')}</a></div>`;
+const communityNav = active => { const games = ['lb', 'games', 'fantasy', 'quiz'].includes(active); return `<div class="seg segscroll"><a data-replace href="#/forum" class="${active === 'forum' ? 'on' : ''}">💬 ${t('cat.topics')}</a>${acct ? `<a data-replace href="#/feed" class="${active === 'feed' ? 'on' : ''}">📰 ${t('fd.tab')}</a>` : ''}<a data-replace href="#/dm" class="${active === 'dm' ? 'on' : ''}">✉️ ${t('dm.title')}${dmUnread ? `<i class="nbadge">${dmUnread}</i>` : ''}</a><a data-replace href="#/notifs" class="${active === 'notifs' ? 'on' : ''}">🔔 ${t('nt.title')}${notifCount ? `<i class="nbadge">${notifCount}</i>` : ''}</a><a data-replace href="#/games" class="${games ? 'on' : ''}">🎮 ${t('gm.tab')}</a><a data-replace href="#/members" class="${active === 'members' ? 'on' : ''}">👥 ${t('u.members')}</a></div>${games ? gamesBar(active) : ''}`; };
 async function pollNotifs(force) {
   if (!acct || (!force && Date.now() - notifAt < 45000)) return;
   notifAt = Date.now();
@@ -2575,7 +2739,7 @@ async function viewForum(cat, sort) {
   const composer = cat === 'takim' ? `<div class="card"><div class="form-block"><div class="hint">${t('cat.teamHint')}</div><a class="btn ghost" href="#/search" style="text-align:center">${t('search.title')} ›</a></div></div>`
     : topicLock() ? topicLock() : acct ? `<div class="card"><h2>✍️ ${t('c.newTopic')} · ${catIcon(cat)} ${esc(catName(cat))}</h2><div class="form-block">
         <input id="p-title" maxlength="100" placeholder="${esc(t('cat.' + cat + '.ph'))}"><textarea id="p-body" maxlength="2000" rows="4" placeholder="${t('c.text')}"></textarea>
-        <button class="btn" data-post-send="${cat}">${t('c.post')}</button><div class="hint" id="p-msg"></div></div></div>` : loginCard();
+        ${pollFields()}<button class="btn" data-post-send="${cat}">${t('c.post')}</button><div class="hint" id="p-msg"></div></div></div>` : loginCard();
   const sorts = `<div class="sortbar">${[['active', 'cat.sortActive'], ['new', 'cat.sortNew'], ['top', 'cat.sortTop']].map(([k, l]) => `<a data-replace href="#/forum/${cat}/${k}" class="${sort === k ? 'on' : ''}">${t(l)}</a>`).join('')}</div>`;
   const list = posts.length ? `<div class="card">${posts.map(p => postRow(p, false)).join('')}</div>` : `<div class="empty">${t('c.noPosts')}</div>`;
   return communityNav('forum') + scrollBar(`<div class="catbar"><a class="catchip" href="#/forum">‹ ${t('cat.all')}</a>${FORUM_CATS.filter(c => c[0] !== cat).map(c => catChip(c[0])).join('')}</div>`)
@@ -2619,6 +2783,7 @@ async function viewPost(id) {
   return `<div class="catbar"><a class="catchip" href="#/forum/${esc(post.category || 'genel')}">‹ ${catIcon(post.category)} ${esc(catName(post.category || 'genel'))}</a></div>
     <div class="card"><div class="form-block"><b style="font-size:17px">${esc(post.title)}</b><small class="hint"><button class="pcode big" data-copy="${codeOf(post.id)}" title="${esc(t('cat.codeCopy'))}">${codeOf(post.id)} ⧉</button> ${refLink(post)}${nameHtml(post)} · ${ago(post.created)} · 👁 ${post.views || 0}${post.pinned ? ' · 📌' : ''}</small>
     <div class="ptext">${esc(post.body)}</div><span class="cact">${isAdminUser() ? `<button class="cbtn txt" data-cact="pin" data-kind="post" data-id="${post.id}" data-pinned="${post.pinned ? 0 : 1}">📌 ${post.pinned ? t('cat.unpin') : t('cat.pin')}</button>` : ''}${likeBtn('post', post)}${delBtn('post', post.id, post.username)}${modBtns(post.username, 'post', post.id)}</span></div></div>
+    ${post.poll ? lazy(topicPollHtml(post.id)) : ''}
     <div class="card"><h2>${t('c.comments')} (${comments.length})</h2>${cm || `<div class="empty" style="padding:14px">${t('c.noComments')}</div>`}</div>` + composer;
 }
 
@@ -2864,7 +3029,8 @@ document.addEventListener('click', async e => {
   if (ps) {
     const msg = document.getElementById('p-msg');
     try {
-      const r = await capi('POST', '/posts', { title: document.getElementById('p-title').value, body: document.getElementById('p-body').value, category: ps.dataset.postSend, ref: ps.dataset.ref });
+      const poll = [...document.querySelectorAll('.pollopt')].map(i => i.value.trim()).filter(Boolean);
+      const r = await capi('POST', '/posts', { title: document.getElementById('p-title').value, body: document.getElementById('p-body').value, category: ps.dataset.postSend, ref: ps.dataset.ref, ...(poll.length ? { poll } : {}) });
       location.hash = '#/post/' + r.id;
     } catch (err) { msg.textContent = '❌ ' + errText(err); }
     return;
@@ -3179,7 +3345,7 @@ if (acct) setTimeout(() => { loadBlocks(); dmEnsure().catch(() => {}); capi('GET
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, members: viewMembers, legend: viewLegend, article: viewArticle, dm: viewDm, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, members: viewMembers, legend: viewLegend, article: viewArticle, dm: viewDm, live: viewLiveScreen, room: viewRoom, games: viewGames, feed: viewFeed, fantasy: viewFantasy, quiz: viewQuiz, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -3198,7 +3364,7 @@ let renderTok = 0, lastTab = 'matches', lastHash = null;
 // pages come back instantly from memory and refresh in the background; scroll position is restored on back
 const pageCache = new Map(), scrollMap = {};
 let navBack = false;
-const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare', 'members', 'user', 'article', 'dm'].includes(r);
+const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare', 'members', 'user', 'article', 'dm', 'feed', 'fantasy', 'quiz'].includes(r);
 const pkey = () => [location.hash, curSport, LANG, acct?.user?.id || 0].join('|');
 try { history.scrollRestoration = 'manual'; } catch {} // the app restores each page's scroll itself
 const TAB_ROUTES = ['matches', 'favs', 'leagues', 'forum', 'profile', 'settings'];
@@ -3218,10 +3384,10 @@ async function render(silent = false) {
   const route = routes[r] ? r : 'matches';
   if (['matches', 'favs', 'leagues', 'settings'].includes(route)) lastTab = route;
   if (['league', 'table'].includes(route)) lastTab = 'leagues';
-  if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members', 'dm'].includes(route)) lastTab = 'forum';
+  if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members', 'dm', 'games', 'feed', 'fantasy', 'quiz', 'room'].includes(route)) lastTab = 'forum';
   if (route === 'profile' || route === 'admin') lastTab = 'profile';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article'].includes(route) && !(route === 'settings' && args[0]) && !(route === 'dm' && args[0] && args[0] !== '_req');
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article', 'live', 'room'].includes(route) && !(route === 'settings' && args[0]) && !(route === 'dm' && args[0] && args[0] !== '_req');
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   let instant = null, dir = 'same', instY = null;
@@ -3522,8 +3688,8 @@ let ticks = 0;
 setInterval(() => {
   if (document.hidden) return;
   const r = (location.hash.replace(/^#\/?/, '') || 'matches').split('/')[0];
-  if (!['matches', 'match', 'favs', 'league', 'team', 'tff', 'table', 'game'].includes(r)) return;
-  const live = document.querySelector('.mtime.live, .hero .st.live');
+  if (!['matches', 'match', 'favs', 'league', 'team', 'tff', 'table', 'game', 'live'].includes(r)) return;
+  const live = document.querySelector('.mtime.live, .hero .st.live, .ssst.live');
   if (live || ++ticks % 6 === 0) render(true);
 }, 5000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(true); });
