@@ -1,5 +1,5 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
-const V = 'grafondex-v48';
+const V = 'grafondex-v50';
 const SHELL = ['./', 'index.html', 'i18n.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html'];
 
 self.addEventListener('install', e => {
@@ -25,7 +25,8 @@ self.addEventListener('fetch', e => {
     // app files: always ask the server whether they changed (GitHub Pages would otherwise
     // serve a 10-minute-old copy from the browser cache); every page load is stored under one key
     e.respondWith(networkFirst(e.request, V, e.request.mode === 'navigate' ? './' : e.request, { cache: 'no-cache', credentials: 'same-origin' }));
-  } else if (url.hostname === 'site.web.api.espn.com' || url.hostname === 'sports.core.api.espn.com') {
+  } else if (/^(site\.web\.api|site\.api|sports\.core\.api)\.espn\.com$/.test(url.hostname) || (/\.workers\.dev$/.test(url.hostname) && !e.request.headers.get('Authorization') && !/^\/api\/(dm|blocks|notifs|me)\b/.test(url.pathname))) {
+    // scores, tables, squads and the server's public data: the last copy is kept for offline use
     e.respondWith(networkFirst(e.request, V + '-api'));
   }
 });

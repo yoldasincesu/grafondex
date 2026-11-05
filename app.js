@@ -279,7 +279,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v50';
 let fx = { anim: true, sound: true, vib: true, voice: true, ...store.get('fx', {}) };
 let actx = null;
 const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
@@ -630,6 +630,22 @@ async function otherSportHtml(sport, day, extra = false) {
   return cards + note;
 }
 
+// favourite team playing right now (or later today): a big score card on top of the match list
+function liveHero(rows) {
+  const live = rows.filter(([e]) => e.status?.type?.state === 'in');
+  const soon = rows.filter(([e]) => e.status?.type?.state === 'pre' && new Date(e.date) - Date.now() < 6 * 3600e3 && new Date(e.date) > Date.now()).slice(0, 1);
+  const pick = (live.length ? live : soon).slice(0, 3);
+  if (!pick.length) return '';
+  return pick.map(([ev, lg]) => {
+    const comp = ev.competitions[0], [h, a] = sides(comp), s = status(ev.status || comp.status, lg), isLive = s.cls === 'live';
+    const evs = (comp.details || []).filter(d => d.scoringPlay || d.redCard).slice(-1)[0];
+    const lastEv = evs ? `${evs.redCard ? '🟥' : '⚽'} ${esc(evs.clock?.displayValue || '')} ${esc(evs.athletesInvolved?.[0]?.displayName || evs.athletesInvolved?.[0]?.shortName || '')}` : '';
+    const side = c => `<div class="lhs">${img(c.team.id, 'big', lg)}<b>${esc(c.team.shortDisplayName || c.team.displayName)}</b></div>`;
+    return `<a class="card livehero ${isLive ? 'on' : ''}" href="#/match/${lg}/${ev.id}"><div class="lhtop">${isLive ? `<span class="lvpulse"></span> ${t('lh.live')}` : `⏰ ${t('lh.soon')}`} · ${esc(lname(leagueOf(lg)) || ev.league?.name || '')}</div>
+      <div class="lhrow">${side(h)}<div class="lhmid"><div class="lhsc">${isLive ? `${esc(scoreOf(h))} – ${esc(scoreOf(a))}` : esc(hm(ev.date))}</div><div class="lhmin">${isLive ? liveHtml(s) : esc(dshort(ev.date))}</div></div>${side(a)}</div>
+      ${lastEv ? `<div class="lhlast">${lastEv}</div>` : ''}</a>`;
+  }).join('');
+}
 async function viewMatches(dateStr) {
   setTitle(t('nav.matches'));
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -700,7 +716,7 @@ async function viewMatches(dateStr) {
     }
   }
   if (!soccer && res.length && res.every(r => r.status === 'rejected')) throw new Error(t('noConn'));
-  let html = sportBar() + bar;
+  let html = sportBar() + liveHero(favRows) + bar;
   const byDate = (x, y) => new Date(x.date) - new Date(y.date);
   if (favRows.length) {
     favRows.sort((x, y) => byDate(x[0], y[0]));
@@ -719,7 +735,7 @@ async function viewMatches(dateStr) {
     html += `<div class="card">${head(L)}${evs.map(e => matchRow(e, L.id, false, tvOf(e, L.id))).join('')}</div>`;
   }
   const extra = curSport === 'basketball' ? await otherSportHtml('eubasket', isoDay(d), true).catch(() => '') : '';
-  if (!seen.size && !cupToday.length && !kslToday.length && !extra.includes('class="card"')) html += `<div class="empty">${t('noMatchesDay')}<br><br><a href="#/settings" style="color:var(--accent)">${t('pickLeagues')}</a></div>`;
+  if (!seen.size && !Object.values(tffToday).some(x => x.length) && !extra.includes('class="card"')) html += `<div class="empty">${t('noMatchesDay')}<br><br><a href="#/settings" style="color:var(--accent)">${t('pickLeagues')}</a></div>`;
   return html + extra;
 }
 
@@ -835,9 +851,11 @@ async function viewMatch(league, id) {
   if (threadHtml) html = html.replace('<!--tv-->', '<!--tv-->') + threadHtml;
   const [mvHtml, prHtml] = await Promise.all([motmHtml(mkey, rosters, s).catch(() => ''), predictHtml(mkey, comp, s, h, a, probFrom(j)).catch(() => '')]);
   const T = { ev: [t('events'), evHtml], st: [t('stats'), stHtml], lu: [t('lineups'), luHtml], rc: [t('recent'), recentHtml(j, [h, a])], inf: [t('info'), infoHtml + calBtn(`${h.team.displayName} – ${a.team.displayName}`, comp.date, [gi.venue?.fullName, lname(leagueOf(league))].filter(Boolean).join(', '))],
-    ch: [t('c.chat'), chatHtml('m-soccer-' + id)], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml] };
+    ch: [t('c.chat'), chatHtml('m-soccer-' + id)], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml], cmp: ['⚖️ ' + t('cmp.tab'), compareHtml(j, h, a, rk)],
+    ...(s.cls !== 'pre' && s.cls !== 'ppd' ? { rt: ['⭐ ' + t('rt.tab'), lazy(ratingsHtml(league, id, rosters, s))] } : {}) };
+  if (s.cls === 'pre') T.inf[1] = lazy(pollHtml(league, id, h, a)) + T.inf[1];
   if (rk.size) T.tb = [t('o.standings'), await standingsHtml(league, undefined, [h.team.id, a.team.id]).catch(() => `<div class="empty">${t('noTable')}</div>`)];
-  const order = (s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'lu', 'rc', 'pr', 'tb', 'ch', 'ev', 'st', 'mv'] : ['ev', 'st', 'lu', 'tb', 'rc', 'inf', 'ch', 'mv', 'pr']).filter(x => T[x]);
+  const order = (s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'cmp', 'lu', 'rc', 'pr', 'tb', 'ch', 'ev', 'st', 'mv'] : ['ev', 'st', 'lu', 'rt', 'tb', 'cmp', 'rc', 'inf', 'ch', 'mv', 'pr']).filter(x => T[x]);
   html += seg(k, order.map(x => T[x][0])) + order.map((x, i) => pane(k, i, T[x][1])).join('');
   return html;
 }
@@ -916,6 +934,48 @@ async function viewUsMatch(league, id) {
 }
 
 // last five games of both teams + earlier meetings, from the match summary
+// pre-match comparison: table place, form of the last five, goals for / against, clean sheets, head to head, absentees
+function compareHtml(j, h, a, rk) {
+  const stats = side => {
+    const lf = (j.lastFiveGames || []).find(x => x.team?.id == side.team.id), evs = lf?.events || [];
+    let gf = 0, ga = 0, pts = 0, cs = 0, w = 0;
+    for (const e of evs) {
+      const home = e.homeTeamId == side.team.id, f = +(home ? e.homeTeamScore : e.awayTeamScore) || 0, g = +(home ? e.awayTeamScore : e.homeTeamScore) || 0;
+      gf += f; ga += g; if (!g) cs++; if (f > g) { pts += 3; w++; } else if (f === g) pts += 1;
+    }
+    const n = evs.length || 0, r = rk?.get(String(side.team.id));
+    return { n, gf, ga, pts, cs, w, avgF: n ? gf / n : 0, avgA: n ? ga / n : 0, rank: r?.rank || 0, lpts: r?.pts ?? null, form: [...evs].sort((x, y) => new Date(x.gameDate) - new Date(y.gameDate)).map(e => e.gameResult).filter(Boolean) };
+  };
+  const A = stats(h), B = stats(a);
+  if (!A.n && !B.n && !A.rank && !B.rank) return `<div class="empty">${t('noInfo')}</div>`;
+  // head to head (this season's meetings and ESPN's head-to-head list when it has one)
+  const h2h = [...(j.seasonseries || []).flatMap(s => s.events || []), ...((j.headToHeadGames || []).flatMap(x => x.events || []))];
+  let hw = 0, aw = 0, dr = 0; const seenH = new Set();
+  for (const e of h2h) {
+    if (seenH.has(e.id)) continue; seenH.add(e.id);
+    const cs = e.competitors || [];
+    let sh, sa;
+    if (cs.length) { const x = cs.find(c => c.team?.id == h.team.id), y = cs.find(c => c.team?.id == a.team.id); sh = +x?.score; sa = +y?.score; }
+    else { const hh = e.homeTeamId == h.team.id; sh = +(hh ? e.homeTeamScore : e.awayTeamScore); sa = +(hh ? e.awayTeamScore : e.homeTeamScore); }
+    if (!Number.isFinite(sh) || !Number.isFinite(sa) || (e.status && e.status?.type?.state === 'pre')) continue;
+    if (sh > sa) hw++; else if (sh < sa) aw++; else dr++;
+  }
+  const row = (label, x, y, fmt = v => v, better = 'high') => {
+    const tot = x + y, px = !tot ? 50 : Math.round((better === 'high' ? x : y) / tot * 100), good = better === 'high' ? x > y ? 'l' : y > x ? 'r' : '' : x < y ? 'l' : y < x ? 'r' : '';
+    return `<div class="cmprow"><b class="${good === 'l' ? 'win' : ''}">${fmt(x)}</b><div class="cmpmid"><span>${label}</span><div class="cmpbar"><i style="width:${px}%"></i><i style="width:${100 - px}%"></i></div></div><b class="${good === 'r' ? 'win' : ''}">${fmt(y)}</b></div>`;
+  };
+  const f1 = v => v.toFixed(1);
+  const head = `<div class="cmphead"><div>${img(h.team.id, 'big', '')}<b>${esc(h.team.shortDisplayName || h.team.displayName)}</b>${formHtml(A.form.join(''))}</div><span>VS</span><div>${img(a.team.id, 'big', '')}<b>${esc(a.team.shortDisplayName || a.team.displayName)}</b>${formHtml(B.form.join(''))}</div></div>`;
+  let rows = '';
+  if (A.rank && B.rank) rows += row(t('cmp.rank'), A.rank, B.rank, v => v + '.', 'low');
+  if (A.lpts != null && B.lpts != null) rows += row(t('th.Pts'), A.lpts, B.lpts);
+  if (A.n && B.n) rows += row(t('cmp.form'), A.pts, B.pts, v => `${v}/15`) + row(t('cmp.wins'), A.w, B.w) + row(t('cmp.gf'), A.avgF, B.avgF, f1) + row(t('cmp.ga'), A.avgA, B.avgA, f1, 'low') + row(t('cmp.cs'), A.cs, B.cs);
+  if (hw + aw + dr) rows += row(t('cmp.h2h'), hw, aw) + `<div class="hint" style="text-align:center;padding:0 0 8px">${t('cmp.draws', dr)}</div>`;
+  // absentees, when ESPN lists them
+  const inj = (j.injuries || []).map(x => ({ team: x.team, list: (x.injuries || []).map(i => `${i.athlete?.displayName || ''}${i.status ? ' · ' + i.status : ''}`).filter(Boolean) })).filter(x => x.list.length);
+  const injHtml = inj.length ? `<div class="card"><h2>🚑 ${t('cmp.out')}</h2>${inj.map(x => `<div class="form-block"><b>${esc(x.team?.displayName || '')}</b>${x.list.map(s => `<div class="hint">• ${esc(s)}</div>`).join('')}</div>`).join('')}</div>` : '';
+  return `<div class="card cmpcard">${head}<div class="cmprows">${rows}</div><div class="hint" style="padding:0 14px 12px">${t('cmp.note')}</div></div>` + injHtml;
+}
 function recentHtml(j, sidesArr) {
   const blocks = sidesArr.map(side => {
     const lf = (j.lastFiveGames || []).find(x => x.team?.id == side.team.id);
@@ -1238,7 +1298,10 @@ async function viewTeam(league, id, season) {
   tbPane += (await Promise.all(ranks.slice(0, 3).map(async r => { try { return `<div class="card"><h2>${lgIcon(r.slug)} ${esc(r.name)}<a href="#/league/${esc(r.slug)}/puan">${t('o.standings')}</a></h2>${await standingsHtml(r.slug, undefined, id)}</div>`; } catch { return ''; } }))).join('');
   if (!tbPane) tbPane = `<div class="empty">${t('noTable')}</div>`;
   return tbPane; }));
-  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum')]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, lazy(newsOr(newsP, t('news.title')))) + pane(k, 5, lazy(forumP));
+  const isSoc = sportOf(league) === 'soccer';
+  const trP = isSoc ? newsFor(`${name} transfer`).catch(() => null) : null;
+  return html + seg(k, [t('fixtures'), t('squad'), t('o.standings'), t('info'), t('news.tab'), t('cat.teamForum'), ...(isSoc ? ['🔁 ' + t('tr.tab'), '🏛️ ' + t('lg.clubTab')] : [])]) + pane(k, 0, fx) + pane(k, 1, sq) + pane(k, 2, tbPane) + pane(k, 3, infoPane) + pane(k, 4, lazy(newsOr(newsP, t('news.title')))) + pane(k, 5, lazy(forumP))
+    + (isSoc ? pane(k, 6, lazy(trP.then(n => n?.length ? newsCard(n, t('tr.title', name)) : `<div class="empty">${t('tr.none')}</div>`))) + pane(k, 7, lazy(clubLegendsHtml(name).catch(() => `<div class="empty">${t('noInfo')}</div>`))) : '');
 }
 
 
@@ -1382,6 +1445,32 @@ async function wdLabels(ids) {
   return out;
 }
 const wdYear = s => s ? (/([+-]\d{4})/.exec(s.time || s)?.[1] || '').replace('+', '') : '';
+// a club's best-known players (Wikidata): fame (Wikipedia language versions) weighted by the years they spent at the club
+async function clubLegendsHtml(name) {
+  const ck = 'clubleg:' + name, hit = store.get(ck, null);
+  let list = hit && Date.now() - hit.t < 7 * 864e5 ? hit.v : null;
+  if (!list) {
+    const s = await get(`${WD}action=wbsearchentities&search=${encodeURIComponent(name)}&language=en&type=item&limit=10`, 86400000);
+    const club = (s.search || []).find(x => /football club|association football|soccer club|futbol kulübü/i.test(x.description || '') && !/women|kadın/i.test(x.description || ''));
+    if (!club) return `<div class="empty">${t('noInfo')}</div>`;
+    const q = `SELECT ?p ?pLabel ?sl WHERE { ?p wdt:P54 wd:${club.id}; wdt:P106 wd:Q937857; wikibase:sitelinks ?sl. FILTER(?sl > 4) SERVICE wikibase:label { bd:serviceParam wikibase:language "${wdLang()},en". } } ORDER BY DESC(?sl) LIMIT 120`;
+    const r = await get('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q), 86400000);
+    const ppl = (r.results?.bindings || []).map(b => ({ id: b.p.value.split('/').pop(), name: b.pLabel.value, sl: +b.sl.value }));
+    // the years, games and goals at this club (one more small query for those players)
+    const q2 = `SELECT ?p (MIN(YEAR(?s)) AS ?from) (MAX(YEAR(?e)) AS ?to) (MAX(?a) AS ?apps) (MAX(?g) AS ?goals) WHERE { VALUES ?p { ${ppl.map(p => 'wd:' + p.id).join(' ')} } ?p p:P54 ?st. ?st ps:P54 wd:${club.id}. OPTIONAL { ?st pq:P580 ?s. } OPTIONAL { ?st pq:P582 ?e. } OPTIONAL { ?st pq:P1350 ?a. } OPTIONAL { ?st pq:P1351 ?g. } } GROUP BY ?p`;
+    const r2 = ppl.length ? await get('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q2), 86400000).catch(() => null) : null;
+    const yrsOf = Object.fromEntries((r2?.results?.bindings || []).map(b => [b.p.value.split('/').pop(), { from: +b.from?.value || 0, to: +b.to?.value || 0, apps: +b.apps?.value || 0, goals: +b.goals?.value || 0 }]));
+    const yr = new Date().getFullYear();
+    list = ppl.map(p => {
+      const y = yrsOf[p.id] || {}, from = y.from || 9999, to = y.to || 0, apps = y.apps || 0, goals = y.goals || 0;
+      const yrs = from < 9999 ? (to || yr) - from : 0;
+      return { ...p, from: from < 9999 ? from : 0, to, apps, goals, score: p.sl * (1 + Math.min(yrs, 12)) + apps / 5, current: !to && from < 9999 };
+    }).sort((a, b) => b.score - a.score).slice(0, 30);
+    store.set(ck, { t: Date.now(), v: list });
+  }
+  if (!list.length) return `<div class="empty">${t('noInfo')}</div>`;
+  return `<div class="card"><h2>🏛️ ${t('lg.clubTitle', esc(name))}</h2>${list.map((p, i) => `<a class="lrow legrow" href="#/legend/${p.id}"><span class="rk">${i + 1}</span><span class="nm">${esc(p.name)}<small class="hint" style="display:block">${p.from ? (p.to && p.to !== p.from ? `${p.from}–${p.to}` : p.to ? `${p.from}` : `${p.from}–`) : ''}${p.apps ? ` · ${p.apps} ${t('lg.apps').toLowerCase()}${p.goals ? ` · ${p.goals} ${t('lg.goals').toLowerCase()}` : ''}` : ''}</small></span><span class="go">›</span></a>`).join('')}<div class="hint" style="padding:8px 14px 12px">${t('lg.src')}</div></div>`;
+}
 async function viewLegend(qid) {
   if (!/^Q\d+$/.test(qid || '')) return `<div class="empty">${t('noInfo')}</div>`;
   const j = await get(`${WD}action=wbgetentities&ids=${qid}&props=claims|labels|descriptions|sitelinks&languages=${wdLang()}|en`, 86400000);
@@ -1428,6 +1517,49 @@ document.addEventListener('input', e => {
 
 
 // ---- Match extras: man of the match vote, score prediction; community: leaderboard, notifications ----
+// fan poll before kick-off: who wins? (members and visitors, one vote per device)
+const devId = () => { let d = store.get('devid', ''); if (!d) { d = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 20); store.set('devid', d); } return d; };
+async function pollHtml(league, id, h, a) {
+  let d; try { d = await capi('GET', `/poll?m=${encodeURIComponent(league + ':' + id)}&dev=${devId()}`); } catch { return ''; }
+  const pc = k => d.n ? Math.round(d[k] / d.n * 100) : 0;
+  const btn = (k, label) => `<button class="pollbtn ${d.mine === k ? 'on' : ''}" data-poll="${esc(league)}|${esc(id)}|${k}"><span>${label}</span>${d.mine || d.n >= 5 ? `<b>${pc(k)}%</b><i style="width:${pc(k)}%"></i>` : ''}</button>`;
+  return `<div class="card pollcard"><h2>🗳️ ${t('poll.title')}${d.n ? ` <small class="hint">· ${t('poll.n', d.n)}</small>` : ''}</h2><div class="pollrow">${btn('h', esc(h.team.shortDisplayName || h.team.displayName))}${btn('d', t('poll.draw'))}${btn('a', esc(a.team.shortDisplayName || a.team.displayName))}</div>${d.mine ? '' : `<div class="hint" style="padding:0 14px 12px">${t('poll.hint')}</div>`}</div>`;
+}
+// player ratings 1-10 after kick-off: everybody's average and my own marks
+async function ratingsHtml(league, id, rosters, st) {
+  const m = league + ':' + id;
+  let d = { avg: [], mine: {}, voters: 0 };
+  try { d = await capi('GET', '/rate?m=' + encodeURIComponent(m)); } catch {}
+  const av = Object.fromEntries(d.avg.map(x => [String(x.player_id), x]));
+  const col = v => v >= 8 ? '#16a34a' : v >= 6.5 ? '#65a30d' : v >= 5 ? '#d97706' : '#dc2626';
+  const played = r => r.roster.filter(x => x.starter || x.subbedIn);
+  const top = d.avg.slice(0, 3).map((x, i) => `<div class="rttop"><span>${['🥇', '🥈', '🥉'][i]}</span><b>${esc(x.player_name)}</b><small>${esc(x.team || '')}</small><i style="background:${col(x.avg)}">${x.avg.toFixed ? x.avg.toFixed(1) : x.avg}</i></div>`).join('');
+  const teams = rosters.map(r => `<div class="card"><h2>${img(r.team.id)} ${esc(r.team.displayName)}</h2>${played(r).map(x => {
+    const pid = String(x.athlete.id), a = av[pid], mine = d.mine[pid] || '';
+    return `<div class="rtrow"><span class="no">${esc(x.jersey ?? '')}</span><span class="nm">${esc(x.athlete.displayName)}${x.starter ? '' : ` <small>${t('subs')}</small>`}</span>${a ? `<i class="rtavg" style="background:${col(a.avg)}" title="${a.n}">${(+a.avg).toFixed(1)}</i>` : '<i class="rtavg none">–</i>'}
+      ${acct ? `<select data-rate="${esc(pid)}" data-name="${esc(x.athlete.displayName)}" data-team="${esc(r.team.displayName)}"><option value="">${t('rt.mine')}</option>${[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(v => `<option ${+mine === v ? 'selected' : ''}>${v}</option>`).join('')}</select>` : ''}</div>`;
+  }).join('') || `<div class="empty" style="padding:14px">${t('noSquad')}</div>`}</div>`).join('');
+  return `<div class="card ratecard"><h2>⭐ ${t('rt.title')}${d.voters ? ` <small class="hint">· ${t('rt.voters', d.voters)}</small>` : ''}</h2>${top || `<div class="empty" style="padding:14px">${t('rt.none')}</div>`}</div>`
+    + `<div class="ratelist" data-ratem="${esc(league)}|${esc(id)}">${teams}${acct ? `<div class="form-block"><button class="btn" data-rate-save>${t('rt.save')}</button><div class="hint" id="rt-msg"></div></div>` : `<div class="empty">${t('rt.login')}</div>`}</div>`;
+}
+document.addEventListener('click', async e => {
+  const pb = e.target.closest('[data-poll]');
+  if (pb) {
+    const [lg, ev, pick] = pb.dataset.poll.split('|'), card = pb.closest('.pollcard');
+    try { await capi('POST', '/poll', { league: lg, event: ev, pick, dev: devId() }); } catch (err) { alert(errText(err)); return; }
+    const m = document.querySelectorAll('.hero .side span'); // fresh numbers in place
+    const html = await pollHtml(lg, ev, { team: { displayName: m[0]?.textContent || '' } }, { team: { displayName: m[1]?.textContent || '' } });
+    if (card && html) card.outerHTML = html;
+    return;
+  }
+  const rs = e.target.closest('[data-rate-save]');
+  if (rs) {
+    const box = rs.closest('[data-ratem]'), [lg, ev] = box.dataset.ratem.split('|'), msg = document.getElementById('rt-msg');
+    const ratings = [...box.querySelectorAll('select[data-rate]')].filter(s => s.value).map(s => ({ id: s.dataset.rate, name: s.dataset.name, team: s.dataset.team, score: +s.value }));
+    if (!ratings.length) { msg.textContent = t('rt.pick'); return; }
+    try { await capi('POST', '/rate', { league: lg, event: ev, ratings }); msg.textContent = '✅ ' + t('rt.saved', ratings.length); pageCache.clear(); setTimeout(() => render(true), 600); } catch (err) { msg.textContent = '❌ ' + errText(err); }
+  }
+});
 async function motmHtml(key, rosters, st) {
   if (st.cls === 'pre' || st.cls === 'ppd') return `<div class="empty">${t('mvp.hintPre')}</div>`;
   let d = { votes: [], mine: null, total: 0 };
@@ -1478,14 +1610,19 @@ async function viewLeaderboard(scope) {
   const chips = `<div class="chips"><a data-replace href="#/leaderboard/week" class="${sc === 'week' ? 'on' : ''}">${t('lb.week')}</a><a data-replace href="#/leaderboard/all" class="${sc === 'all' ? 'on' : ''}">${t('lb.all')}</a></div>`;
   const board = d.board.length ? `<div class="card">${d.board.map((r, i) => `<div class="lbrow"><span class="rk">${i + 1}</span>${avatar(r, 30)}<span class="nm">${nameHtml(r)}${r.username === d.lastWinner ? ` <span class="bdg">🏆 ${t('bdg.weekly')}</span>` : ''}</span><small>${r.exact} ${t('lb.exact')}</small><b>${r.pts}</b></div>`).join('')}</div>` : `<div class="empty">${t('lb.empty')}</div>`;
   const mine = d.mine.length ? `<div class="card"><h2>${t('lb.mine')}</h2>${d.mine.map(m => `<a class="lrow" href="#/match/${m.match.split(':')[0]}/${m.match.split(':')[1]}"><span class="nm" style="padding:10px 12px">${esc(m.home_name)} - ${esc(m.away_name)}<small class="hint" style="display:block">${t('pred.mineLbl')}: ${m.home}-${m.away}${m.settled === 1 ? ` · ${m.rh}-${m.ra}` : ''}</small></span><span class="pcount">${m.settled === 1 ? t('pred.pts', m.pts) : '⏳'}</span></a>`).join('')}</div>` : '';
-  return communityNav('lb') + `<div class="card"><div class="form-block"><div class="hint">${t('pred.hint')}</div></div></div>` + chips + board + mine;
+  // champions of past weeks (awarded automatically every Monday 09:00)
+  const w = await capi('GET', '/weekly').catch(() => ({ weeks: [] }));
+  const byWeek = {}; for (const x of w.weeks || []) (byWeek[x.week] ||= []).push(x);
+  const champs = Object.keys(byWeek).length ? `<div class="card"><h2>🏆 ${t('wk.champs')}</h2>${Object.entries(byWeek).sort((a, b) => b[0] - a[0]).slice(0, 8).map(([wk, xs]) => `<div class="wkrow"><small>${esc(fmtD(+wk * 1000, { day: 'numeric', month: 'short' }))} – ${esc(fmtD((+wk + 6 * 86400) * 1000, { day: 'numeric', month: 'short' }))}</small>${xs.sort((a, b) => a.place - b.place).map(x => `<a href="#/user/${encodeURIComponent(x.username)}">${['🥇', '🥈', '🥉'][x.place - 1]} ${esc(x.username)} <small>${x.pts}</small></a>`).join('')}</div>`).join('')}</div>` : '';
+  const nextAward = (() => { const n = new Date(); const ist = new Date(n.getTime() + 3 * 3600e3); const dow = (ist.getUTCDay() + 6) % 7; const mon = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate() + (7 - dow)) + 6 * 3600e3; const ms = mon - n.getTime(); const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5); return t('wk.next', d, h); })();
+  return communityNav('lb') + `<div class="card"><div class="form-block"><div class="hint">${t('pred.hint')}</div><div class="wknext">⏳ ${nextAward}</div></div></div>` + chips + board + champs + mine;
 }
 async function viewNotifs() {
   setTitle(t('nt.title'));
   if (!acct) return communityNav('notifs') + authForm();
   let d; try { d = await capi('GET', '/notifs'); } catch (e) { return communityNav('notifs') + `<div class="empty">⚠️ ${esc(errText(e))}</div>`; }
   const txt = i => t('nt.' + i.kind, i.who);
-  const html = d.items.length ? `<div class="card">${d.items.map(i => `<a class="lrow ${i.read ? '' : 'unread'}${/^mod_/.test(i.kind) ? ' modn' : ''}" href="${/^mod_/.test(i.kind) || !i.post_id ? '#/user/' + encodeURIComponent(i.who) : '#/post/' + i.post_id}"><span class="nm" style="padding:10px 12px">${esc(txt(i))}<small class="hint" style="display:block">“${esc(i.text || '')}” · ${ago(i.created)}</small></span></a>`).join('')}</div>` : `<div class="empty">${t('nt.empty')}</div>`;
+  const html = d.items.length ? `<div class="card">${d.items.map(i => `<a class="lrow ${i.read ? '' : 'unread'}${/^mod_/.test(i.kind) ? ' modn' : ''}" href="${i.kind === 'weekly' ? '#/leaderboard' : i.kind === 'dm' ? '#/dm/' + encodeURIComponent(i.who) : /^mod_/.test(i.kind) || !i.post_id ? '#/user/' + encodeURIComponent(i.who) : '#/post/' + i.post_id}"><span class="nm" style="padding:10px 12px">${esc(txt(i))}<small class="hint" style="display:block">“${esc(i.text || '')}” · ${ago(i.created)}</small></span></a>`).join('')}</div>` : `<div class="empty">${t('nt.empty')}</div>`;
   if (d.unread) { capi('POST', '/notifs/read').then(() => { notifCount = 0; notifAt = 0; document.querySelectorAll('.nbadge,.tbadge').forEach(x => x.remove()); pollNotifs(true); }).catch(() => {}); }
   return communityNav('notifs') + html;
 }
@@ -1581,7 +1718,13 @@ async function viewFavs() {
     return `<div class="card"><h2>${phLogo(f.name, f.sport)} <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/tx/${esc(f.sport)}/${encodeURIComponent(f.name)}">${t('teamLink')}</a></h2>${gs.map(row).join('') || `<div class="empty" style="padding:16px">${t('noMatch')}</div>`}</div>`;
   }));
   const xHtml = xCards.join('');
-  const html = (mineF.length ? await favCards(mineF) : '') + xHtml + (mineP.length ? await favPlayers(mineP) : '');
+  const tffF = mineF.filter(f => String(f.id).startsWith('tff:')), espnF = mineF.filter(f => !String(f.id).startsWith('tff:'));
+  const tffCards = (await Promise.all(tffF.map(async f => {
+    const nm = String(f.id).slice(4), d = await get(`${workerBase()}/tffteam?pid=${TFF_PID[f.league]}&grup=${encodeURIComponent(f.grup || '')}&name=${encodeURIComponent(nm)}`, 300000).catch(() => null);
+    const ms = (d?.matches || []), next = ms.filter(m => !tffScore(m.score)), last = ms.filter(m => tffScore(m.score)).slice(-1);
+    return `<div class="card"><h2><span class="tinit">${esc(f.name.slice(0, 1))}</span> <span style="color:var(--text);font-size:14px">${esc(f.name)}</span><a href="#/tt/${esc(f.league)}/${encodeURIComponent(nm)}/${esc(f.grup || '')}">${t('teamLink')}</a></h2>${[...last, ...next].map(m => tffRow(m, f.league, true)).join('') || `<div class="empty" style="padding:14px">${t('noMatches')}</div>`}</div>`;
+  }))).join('');
+  const html = (espnF.length ? await favCards(espnF) : '') + tffCards + xHtml + (mineP.length ? await favPlayers(mineP) : '');
   const calAll = favs.length || xfavs.length ? `<div class="form-block"><button class="btn ghost" data-ics-all>📅 ${t('o.calAll')}</button></div>` : '';
   return sportBar() + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`) + calAll;
 }
@@ -1777,13 +1920,32 @@ function usStandingsHtml(league, groups) {
   }).join('');
 }
 
+// form column: the last five results (newest first) and a "?" for the next game, from one season scoreboard request
+const formBoxes = f => f ? `<span class="fbox">${f.next ? `<a class="fq" href="${f.next.href}" title="${esc(f.next.title)}">?</a>` : '<i class="fq off">?</i>'}${f.res.slice(0, 5).map(r => `<a class="fr ${r.r}" href="${r.href}" title="${esc(r.title)}">${t('res.' + r.r)}</a>`).join('')}</span>` : '';
+async function leagueForm(league) {
+  const now = new Date(), from = ymd(addDays(now, -75)), to = ymd(addDays(now, 28));
+  const j = await get(`${api(league)}/scoreboard?dates=${from}-${to}&limit=1000`, 600000).catch(() => null);
+  const m = new Map(), add = (id, x, k) => { const o = m.get(id) || { res: [], next: null }; if (k === 'res') o.res.push(x); else if (!o.next || x.d < o.next.d) o.next = x; m.set(id, o); };
+  for (const ev of j?.events || []) {
+    const comp = ev.competitions?.[0], [h, a] = sides(comp || {}); if (!h || !a) continue;
+    const st = ev.status?.type?.state, title = `${h.team.displayName} ${st === 'post' ? scoreOf(h) + '-' + scoreOf(a) : '-'} ${a.team.displayName} · ${dshort(ev.date)}`, href = `#/match/${league}/${ev.id}`;
+    if (st === 'post' && !/POSTPONED|CANCELED/.test(ev.status?.type?.name || '')) {
+      const hs = +scoreOf(h), as = +scoreOf(a);
+      add(String(h.team.id), { r: hs > as ? 'W' : hs < as ? 'L' : 'D', d: ev.date, title, href }, 'res');
+      add(String(a.team.id), { r: as > hs ? 'W' : as < hs ? 'L' : 'D', d: ev.date, title, href }, 'res');
+    } else if (st === 'pre') { add(String(h.team.id), { d: ev.date, title, href }, 'next'); add(String(a.team.id), { d: ev.date, title, href }, 'next'); }
+  }
+  for (const o of m.values()) o.res.sort((x, y) => new Date(y.d) - new Date(x.d));
+  return m;
+}
 async function standingsHtml(league, season, hl) {
   const j = await get(`${apiSt(league)}/standings${season && season !== curSeasonYear() ? '?season=' + season : ''}`, 120000);
   const groups = j.children || [];
   if (!groups.length) return `<div class="empty">${t('noTable')}</div>`;
   if (sportOf(league) !== 'soccer') return usStandingsHtml(league, groups);
   // games being played right now count in the table as if they ended this minute (3 points for the side that leads)
-  const liveGames = !season || season === curSeasonYear() ? await liveScores(league) : [];
+  const cur = !season || season === curSeasonYear();
+  const [liveGames, form] = await Promise.all([cur ? liveScores(league) : [], cur ? leagueForm(league).catch(() => new Map()) : new Map()]);
   let anyLive = false;
   const html = groups.map(g => {
     const entries = [...(g.standings?.entries || [])];
@@ -1806,12 +1968,13 @@ async function standingsHtml(league, season, hl) {
       const pos = changed ? k + 1 : v('rank'), mv = changed ? r.rank - (k + 1) : 0;
       const arrow = mv > 0 ? `<i class="mv up">▲${mv}</i>` : mv < 0 ? `<i class="mv dn">▼${-mv}</i>` : '';
       const lv = r.live ? ' lv' : '', fmt = n => (n > 0 && changed ? '+' : '') + n;
-      return `<tr class="${(hl ? [].concat(hl).map(String).includes(String(e.team.id)) : isFav(e.team.id, league)) ? 'fav' : ''}${r.live ? ' livetr' : ''}"><td class="r" style="border-left-color:${nt?.color || 'transparent'}">${pos}${arrow}</td>
+      const zc = nt?.color || '', gf = v('pointsFor'), ga = v('pointsAgainst');
+      return `<tr class="${(hl ? [].concat(hl).map(String).includes(String(e.team.id)) : isFav(e.team.id, league)) ? 'fav' : ''}${r.live ? ' livetr' : ''}"><td class="r"><b class="rkbox ${zc ? 'z' : ''}" style="${zc ? `background:${zc}` : ''}">${pos}</b>${arrow}</td>
         <td class="t"><a href="#/team/${league}/${e.team.id}">${img(e.team.id, '', league)}<span>${esc(e.team.displayName)}</span>${r.live ? `<b class="lvdot" title="${esc(r.live.gf + '-' + r.live.ga)}">${r.live.gf}-${r.live.ga}</b>` : ''}${favStar(e.team.id, e.team.displayName, league)}</a></td>
-        <td class="${lv}">${r.live ? r.gp : v('gamesPlayed')}</td><td class="${lv}">${r.live ? r.w : v('wins')}</td><td class="${lv}">${r.live ? r.d : v('ties')}</td><td class="${lv}">${r.live ? r.l : v('losses')}</td><td class="${lv}">${r.live ? fmt(r.gd) : v('pointDifferential')}</td><td class="p ${lv}">${r.live ? r.pts : v('points')}</td></tr>`;
+        <td class="${lv}">${r.live ? r.gp : v('gamesPlayed')}</td><td class="${lv}">${r.live ? r.w : v('wins')}</td><td class="${lv}">${r.live ? r.d : v('ties')}</td><td class="${lv}">${r.live ? r.l : v('losses')}</td><td class="gl">${gf !== '' && ga !== '' ? `${esc(gf)}:${esc(ga)}` : ''}</td><td class="${lv}">${r.live ? fmt(r.gd) : v('pointDifferential')}</td><td class="p ${lv}">${r.live ? r.pts : v('points')}</td>${form.size ? `<td class="fm">${formBoxes(form.get(String(e.team.id)))}</td>` : ''}</tr>`;
     }).join('');
     const legend = notes.size ? `<div class="legend">${[...notes].map(([d, c]) => `<div><i style="background:${c}"></i>${esc(t('n.' + d))}</div>`).join('')}</div>` : '';
-    return `<div class="card">${groups.length > 1 ? `<h2>${esc(g.name)}</h2>` : ''}<table><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th></tr></thead><tbody>${rows}</tbody></table>${legend}</div>`;
+    return `<div class="card">${groups.length > 1 ? `<h2>${esc(g.name)}</h2>` : ''}<div class="stscroll"><table class="stnew"><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.goals')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th>${form.size ? `<th>${t('th.form')}</th>` : ''}</tr></thead><tbody>${rows}</tbody></table></div>${legend}</div>`;
   }).join('');
   return (anyLive ? `<div class="livenote"><span class="lvpulse"></span>${t('lt.note')}</div>` : '') + html;
 }
@@ -1878,23 +2041,44 @@ function tffRow(m, lg = 'tur.cup', withDate = false) {
 }
 const ztkData = () => get(`${workerBase()}/ztk`, 300000);
 const tgrpGet = lg => (store.get('tgrp', {})[lg]) || '';
-const kslData = (around, hafta, lg = 'tur.w.1') => TFF_GROUPED(lg)
-  ? get(`${workerBase()}/tfflig?${[`pid=${TFF_PID[lg]}`, tgrpGet(lg) ? 'grup=' + tgrpGet(lg) : '', hafta ? 'hafta=' + hafta : around ? 'around=1' : ''].filter(Boolean).join('&')}`, 120000)
-  : get(`${workerBase()}/ksl?${[hafta ? 'hafta=' + hafta : around ? 'around=1' : '', lg === 'tur.2' ? 'lig=142' : ''].filter(Boolean).join('&')}`, 120000);
+const kslData = (around, hafta, lg = 'tur.w.1', back = 0) => TFF_GROUPED(lg)
+  ? get(`${workerBase()}/tfflig?${[`pid=${TFF_PID[lg]}`, tgrpGet(lg) ? 'grup=' + tgrpGet(lg) : '', hafta ? 'hafta=' + hafta : around ? 'around=1' : '', back ? 'back=' + back : ''].filter(Boolean).join('&')}`, 120000)
+  : get(`${workerBase()}/ksl?${[hafta ? 'hafta=' + hafta : around ? 'around=1' : '', lg === 'tur.2' ? 'lig=142' : '', back ? 'back=' + back : ''].filter(Boolean).join('&')}`, 120000);
+// TFF form column from the weeks the server sent along (newest result first, then a ? for the next game)
+function tffForm(d, lg) {
+  const m = new Map(), up = s => String(s || '').toUpperCase();
+  const ms = (d.rounds || []).flatMap(r => r.matches || []).filter(x => x.iso).sort((a, b) => b.iso.localeCompare(a.iso));
+  for (const x of ms) {
+    const sc = tffScore(x.score), title = `${tffName(x.home)} ${sc ? sc.join('-') : '-'} ${tffName(x.away)} · ${dshort(x.iso)}`, href = x.id ? `#/tff/${x.id}/${lg}` : '#';
+    for (const [me, mine, theirs] of [[up(x.home), 0, 1], [up(x.away), 1, 0]]) {
+      const o = m.get(me) || { res: [], next: null };
+      if (sc) { const a = +sc[mine], b = +sc[theirs]; o.res.push({ r: a > b ? 'W' : a < b ? 'L' : 'D', title, href }); }
+      else o.next = { title, href }; // the list runs newest first: the last unplayed one seen is the nearest
+      m.set(me, o);
+    }
+  }
+  return m;
+}
 // Turkish women's Super League: week-by-week fixtures and the table
 // league table of a TFF league; every club links to its own page
 const tffTableHtml = (d, lg, hl = '') => {
   if (!d.table?.length) return `<div class="empty">${t('noTable')}</div>`;
-  const rows = d.table.map(r => `<tr class="${hl && r.name === hl ? 'me' : ''}"><td class="r">${r.rank}</td><td class="t"><a class="tl" href="#/tt/${lg}/${encodeURIComponent(r.name)}/${esc(d.grup || '')}"><span class="tinit">${esc(tffName(r.name).slice(0, 1))}</span><span>${esc(tffName(r.name))}</span></a></td><td>${esc(r.o)}</td><td>${esc(r.g)}</td><td>${esc(r.b)}</td><td>${esc(r.m)}</td><td>${esc(r.av)}</td><td class="p">${esc(r.p)}</td></tr>`).join('');
-  return `<div class="card"><table><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const form = (d.rounds || []).length > 2 ? tffForm(d, lg) : new Map(), n = d.table.length;
+  // the zone colours of the Turkish leagues: promotion (green), play-off (light green / blue), relegation (red)
+  const zone = r => lg === 'tur.2' ? (r.rank <= 2 ? '#16a34a' : r.rank <= 6 ? '#22c55e99' : r.rank > n - 4 ? '#dc2626' : '') : TFF_GROUPED(lg) ? (r.rank <= 1 ? '#16a34a' : r.rank <= 5 ? '#22c55e99' : r.rank > n - 3 ? '#dc2626' : '') : (r.rank <= 1 ? '#16a34a' : r.rank > n - 2 ? '#dc2626' : '');
+  const rows = d.table.map(r => { const zc = zone(r), f = form.get(String(r.name).toUpperCase());
+    return `<tr class="${hl && r.name === hl ? 'me' : ''}"><td class="r"><b class="rkbox ${zc ? 'z' : ''}" style="${zc ? `background:${zc}` : ''}">${r.rank}</b></td><td class="t"><a class="tl" href="#/tt/${lg}/${encodeURIComponent(r.name)}/${esc(d.grup || '')}"><span class="tinit">${esc(tffName(r.name).slice(0, 1))}</span><span>${esc(tffName(r.name))}</span></a></td><td>${esc(r.o)}</td><td>${esc(r.g)}</td><td>${esc(r.b)}</td><td>${esc(r.m)}</td><td class="gl">${r.a !== '' && r.y !== '' && r.a != null ? `${esc(r.a)}:${esc(r.y)}` : ''}</td><td>${esc(r.av)}</td><td class="p">${esc(r.p)}</td>${form.size ? `<td class="fm">${formBoxes(f)}</td>` : ''}</tr>`; }).join('');
+  const legend = `<div class="legend"><div><i style="background:#16a34a"></i>${t(lg === 'tur.w.1' ? 'z.champ' : 'z.promo')}</div><div><i style="background:#22c55e99"></i>${t('z.playoff')}</div><div><i style="background:#dc2626"></i>${t('n.Relegation')}</div></div>`;
+  return `<div class="card"><div class="stscroll"><table class="stnew"><thead><tr><th>#</th><th style="text-align:left">${t('th.team')}</th><th>${t('th.P')}</th><th>${t('th.W')}</th><th>${t('th.D')}</th><th>${t('th.L')}</th><th>${t('th.goals')}</th><th>${t('th.GD')}</th><th>${t('th.Pts')}</th>${form.size ? `<th>${t('th.form')}</th>` : ''}</tr></thead><tbody>${rows}</tbody></table></div>${legend}</div>`;
 };
+
 // 2. and 3. Lig are played in groups: one chip per group
 const groupBar = (d, lg) => TFF_GROUPED(lg) && d.groups?.length > 1
   ? `<div class="chipwrap" style="padding:0 0 10px">${d.groups.map(g => `<button class="btn ${String(g.id) === String(d.grup) ? '' : 'ghost'}" style="padding:6px 14px" data-tgrp="${lg}|${esc(g.id)}">${esc(g.name)}</button>`).join('')}</div>` : '';
 async function kslHtml(tab, start, lg = 'tur.w.1') {
   if (!workerBase()) return needWorkerHtml();
   if (tab === 'puan') {
-    const d = await kslData(false, 0, lg);
+    const d = await kslData(false, 0, lg, 5);
     return groupBar(d, lg) + tffTableHtml(d, lg);
   }
   const d = await kslData(false, start ? +start : 0, lg);
@@ -1937,7 +2121,8 @@ async function viewTffTeam(lg, rawName, grup = '') {
   if (!d || d.error) return `<div class="empty">${t('loadFail')}</div>`;
   const r = d.row;
   const hero = `<div class="card hero"><span class="tinit big">${esc(tffName(name).slice(0, 1))}</span><div style="font-size:20px;font-weight:700;margin-top:8px">${esc(tffName(name))}</div>
-    <div class="st">${r ? esc(`${t('rankIn', r.rank, lname(leagueOf(lg)))} · ${r.o} ${t('th.P')} · ${r.g}-${r.b}-${r.m} · ${r.p} ${t('th.Pts')}`) : esc(lname(leagueOf(lg)))}</div></div>`;
+    <div class="st">${r ? esc(`${t('rankIn', r.rank, lname(leagueOf(lg)))} · ${r.o} ${t('th.P')} · ${r.g}-${r.b}-${r.m} · ${r.p} ${t('th.Pts')}`) : esc(lname(leagueOf(lg)))}</div>
+    ${(() => { const fid = 'tff:' + name.toUpperCase(), on = isFav(fid, lg); return `<button class="favbtn ${on ? 'on' : ''}" data-fav="${esc(fid)}" data-name="${esc(tffName(name))}" data-league="${esc(lg)}" data-grup="${esc(d.grup || grup || '')}">${on ? t('inFavs') : t('addFav')}</button>`; })()}</div>`;
   const ms = d.matches || [], done = ms.filter(m => tffScore(m.score)).reverse(), next = ms.filter(m => !tffScore(m.score));
   const rows = list => list.map(m => tffRow(m, lg, true)).join('');
   const fx = (next.length ? `<div class="fxsec">${t('upcoming')}</div><div class="card">${rows(next)}</div>` : '') + (done.length ? `<div class="fxsec">${t('recentMatches')}</div><div class="card">${rows(done)}</div>` : '') || `<div class="empty">${t('noMatches')}</div>`;
@@ -2032,7 +2217,7 @@ async function callWorker(path, extra = {}) {
 }
 const syncNotify = () => callWorker('/sync', {
   // the notification server follows football only
-  topic: notif.topic, prefs: notif.prefs, lang: LANG, teams: [...favs.map(f => ({ id: f.id, name: f.name, sport: sportOf(f.league) })), ...xfavs.map(f => ({ id: f.name, name: f.name, sport: f.sport }))],
+  topic: notif.topic, prefs: notif.prefs, lang: LANG, teams: [...favs.map(f => ({ id: f.id, name: f.name, sport: String(f.id).startsWith('tff:') ? 'tff' : sportOf(f.league), league: f.league, ...(f.grup ? { grup: f.grup } : {}) })), ...xfavs.map(f => ({ id: f.name, name: f.name, sport: f.sport }))],
   players: pfavs.filter(f => f.sport === 'soccer').map(f => ({ id: f.id, name: f.name })),
   app: location.href.split('#')[0], push: notif.push || null,
 });
@@ -2114,7 +2299,7 @@ const AVATAR_COLORS = ['#1667f2', '#0ea5e9', '#16a34a', '#f59e0b', '#ef4444', '#
 const hashColor = n => AVATAR_COLORS[[...String(n)].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length];
 const avatar = (m, size = 30) => `<span class="av" style="width:${size}px;height:${size}px;font-size:${Math.round(size * .45)}px;background:${m.color || hashColor(m.username)}">${esc(String(m.username || '?')[0].toUpperCase())}</span>`;
 const favBadge = m => m.fav_id ? `<img class="favlogo" loading="lazy" src="${logoUrl(m.fav_id, m.fav_league)}" title="${esc(m.fav_name || '')}" alt="" onerror="this.style.display='none'">` : '';
-const nameHtml = m => `<a class="cu ${m.role === 'admin' ? 'adm' : ''}" href="#/user/${encodeURIComponent(m.username)}" style="color:${m.color || hashColor(m.username)}">${esc(m.username)}</a>${m.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}${favBadge(m)}`;
+const nameHtml = m => `<a class="cu ${m.role === 'admin' ? 'adm' : ''}" href="#/user/${encodeURIComponent(m.username)}" style="color:${m.color || hashColor(m.username)}">${esc(m.username)}</a><span class="rkslot" data-rk-u="${esc(m.username)}"></span>${m.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}${favBadge(m)}`;
 
 function authForm() {
   return `<div class="card authcard"><h2>${t('c.loginTitle')}</h2><div class="form-block">
@@ -2183,7 +2368,9 @@ async function viewProfile() {
   return `<div class="card profhead">${avatar(me, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
       <div><a href="#/user/${encodeURIComponent(u.username)}" style="color:var(--accent);font-size:13px">${t('c.publicView')} ›</a></div></div></div>
     ${u.role === 'admin' ? adminLink() : ''}
+    ${await rankCard()}
     ${u.badges?.length ? `<div class="card">${badgeRow(u.badges)}</div>` : ''}
+    ${blocked.size ? `<div class="card"><h2>⛔ ${t('dm.blockedList')}</h2>${[...blocked].map(b => `<div class="lrow"><span class="nm" style="padding:10px 12px">${esc(b)}</span><button class="cbtn txt" data-block-user="${esc(b)}">${t('dm.unblock')}</button></div>`).join('')}</div>` : ''}
     <div class="card"><h2>🎨 ${t('c.avatarColor')}</h2><div class="swatches">${swatches}</div></div>
     <div class="card"><h2>📝 ${t('c.bio')}</h2><div class="form-block"><textarea id="pf-bio" maxlength="140" rows="3" placeholder="${t('c.bioPh')}">${esc(u.bio || '')}</textarea>
       <button class="btn" data-profile-save>${t('c.save')}</button><div class="hint" id="pf-msg"></div></div></div>
@@ -2203,13 +2390,15 @@ async function viewUser(name) {
   const { user: u } = await capi('GET', '/users/' + encodeURIComponent(name));
   const m = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
   const own = acct?.user?.username === u.username;
+  if (u.rank != null) rankMap.set(u.username, u.rank);
   return `<div class="card profhead">${avatar(m, 64)}<div><b style="font-size:18px">${esc(u.username)}</b>${u.role === 'admin' ? ' <i class="adminbadge">ADMIN</i>' : ''}
+      ${u.rank != null ? `<div class="rkline on">${RANK_UI[u.rank][0]} <b>${t(RANK_UI[u.rank][1])}</b>${u.weeklyWins ? ` · 🏆 ×${u.weeklyWins}` : ''}</div>` : ''}
       <div class="hint">${t('c.joined', fmtD(u.created * 1000, { day: 'numeric', month: 'long', year: 'numeric' }))}</div></div></div>
     ${u.badges?.length ? `<div class="card">${badgeRow(u.badges)}</div>` : ''}
     ${u.bio ? `<div class="card"><div class="form-block ptext">${esc(u.bio)}</div></div>` : ''}
     ${favListOf(u).length ? `<div class="card"><h2>⭐ ${t('c.favs')}</h2><div class="form-block">${favListOf(u).map(f => favItemHtml(f, false)).join('')}</div></div>` : ''}
     <div class="card"><div class="statrow"><div><b>${u.posts}</b><small>${t('c.topics')}</small></div><div><b>${u.messages}</b><small>${t('c.msgs')}</small></div></div></div>
-    ${own ? `<a class="btn" href="#/profile" style="display:block;text-align:center">${t('c.editProfile')}</a>` : ''}${u.mod && !own ? umodCard(u) : ''}`;
+    ${own ? `<a class="btn" href="#/profile" style="display:block;text-align:center">${t('c.editProfile')}</a>` : acct ? `<div class="card"><div class="form-block profact"><a class="btn" href="#/dm/${encodeURIComponent(u.username)}">✉️ ${t('dm.send')}</a><button class="btn ghost" data-block-user="${esc(u.username)}">${blocked.has(u.username) ? '✅ ' + t('dm.unblock') : '⛔ ' + t('dm.block')}</button></div></div>` : ''}${u.mod && !own ? umodCard(u) : ''}`;
 }
 // admins: the member's moderation state and the buttons to change it, right on the profile
 function umodCard(u) {
@@ -2238,7 +2427,8 @@ document.addEventListener('click', async e => {
   if (!ch && !dl) return;
   const msg = document.getElementById('pw-msg'), oldEl = document.getElementById('pw-old'), newEl = document.getElementById('pw-new');
   try {
-    if (ch) { await capi('POST', '/password', { old: oldEl.value, new: newEl.value }); msg.textContent = '✅ ' + t('c.passChanged'); oldEl.value = newEl.value = ''; }
+    if (ch) { const np = newEl.value; await capi('POST', '/password', { old: oldEl.value, new: np }); msg.textContent = '✅ ' + t('c.passChanged'); oldEl.value = newEl.value = '';
+      if (await loadLocalKey()) capi('POST', '/dm/key', { pub: dmPub, wrapped: await wrapPriv(dmPriv, np) }).catch(() => {}); } // the DM key follows the new password
     else {
       if (!oldEl.value) { msg.textContent = t('c.enterPass'); return; }
       if (!confirm(t('c.confirmDelete'))) return;
@@ -2250,14 +2440,42 @@ document.addEventListener('click', async e => {
 
 // ---------- theme: automatic / light / dark
 let themeMode = store.get('theme', 'auto');
+// team colours: the app takes the colours of a favourite team (ESPN's team colour + alternate colour)
+let teamTheme = store.get('teamTheme', null); // { id, league, name, c1, c2 }
+const lum = hex => { const n = parseInt(String(hex || '').replace('#', ''), 16); if (!Number.isFinite(n)) return .5; const [r, g, b] = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
 const applyTheme = () => {
   const dark = themeMode === 'dark' || (themeMode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const root = document.documentElement;
+  root.dataset.theme = dark ? 'dark' : 'light';
+  if (teamTheme?.c1) {
+    // an accent that stays readable: black kits get their second colour (or a light grey) in dark mode, white ones a dark tone in light mode
+    let a = '#' + teamTheme.c1, b = '#' + (teamTheme.c2 || teamTheme.c1);
+    if (dark && lum(a) < .06) a = lum(b) > .06 ? b : '#d1d5db';
+    if (!dark && lum(a) > .7) a = lum(b) < .7 ? b : '#334155';
+    const g1 = '#' + teamTheme.c1, g2 = lum('#' + teamTheme.c1) < .03 && lum(b) < .03 ? '#3f3f46' : b;
+    root.style.setProperty('--accent', a); root.style.setProperty('--accent2', a);
+    root.style.setProperty('--grad', `linear-gradient(100deg,${g1},${g1} 45%,${g2})`);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', g1);
+  } else {
+    for (const k of ['--accent', '--accent2', '--grad']) root.style.removeProperty(k);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0f4fd8');
+  }
 };
+async function setTeamTheme(v) {
+  if (!v) { teamTheme = null; store.set('teamTheme', null); applyTheme(); return; }
+  const [league, id] = v.split('|'), f = favs.find(x => String(x.id) === id && x.league === league);
+  const j = await get(`${api(league)}/teams/${id}`, 86400000).catch(() => null);
+  const tm = j?.team;
+  if (!tm?.color) { alert(t('tt.noColor')); return; }
+  teamTheme = { id, league, name: f?.name || tm.displayName, c1: tm.color, c2: tm.alternateColor || '' };
+  store.set('teamTheme', teamTheme); applyTheme();
+}
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => themeMode === 'auto' && applyTheme()); } catch {}
 applyTheme();
-const themeCard = () => `<div class="card"><h2>🎨 ${t('theme.title')}</h2><div class="langs">${['auto', 'light', 'dark'].map(m =>
-  `<button class="langbtn ${m === themeMode ? 'on' : ''}" data-theme-set="${m}">${t('theme.' + m)}</button>`).join('')}</div></div>`;
+const themeCard = () => { const tf = favs.filter(f => sportOf(f.league) === 'soccer' && !String(f.id).startsWith('tff:'));
+  return `<div class="card"><h2>🎨 ${t('theme.title')}</h2><div class="langs">${['auto', 'light', 'dark'].map(m =>
+  `<button class="langbtn ${m === themeMode ? 'on' : ''}" data-theme-set="${m}">${t('theme.' + m)}</button>`).join('')}</div>
+  <div class="form-block"><label>⚽ ${t('tt.title')}<select data-team-theme><option value="">${t('tt.off')}</option>${tf.map(f => `<option value="${esc(f.league)}|${esc(f.id)}" ${teamTheme && String(teamTheme.id) === String(f.id) ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label>${tf.length ? '' : `<div class="hint">${t('tt.needFav')}</div>`}</div></div>`; };
 
 // the profile's favourites: several teams and players (older accounts have just the one team)
 const favListOf = u => { const l = [...(u?.favlist || [])]; if (u?.fav && !l.some(f => f.k === 't' && String(f.id) === String(u.fav.id))) l.unshift({ k: 't', id: u.fav.id, name: u.fav.name, league: u.fav.league, sport: 'soccer' }); return l; };
@@ -2325,14 +2543,15 @@ document.addEventListener('click', async e => {
 
 // ---------- forum
 let notifCount = 0, notifAt = 0;
-const communityNav = active => `<div class="seg"><a data-replace href="#/forum" class="${active === 'forum' ? 'on' : ''}">💬 ${t('cat.topics')}</a><a data-replace href="#/leaderboard" class="${active === 'lb' ? 'on' : ''}">🏆 ${t('lb.tab')}</a><a data-replace href="#/notifs" class="${active === 'notifs' ? 'on' : ''}">🔔 ${t('nt.title')}${notifCount ? `<i class="nbadge">${notifCount}</i>` : ''}</a><a data-replace href="#/members" class="${active === 'members' ? 'on' : ''}">👥 ${t('u.members')}</a></div>`;
+const communityNav = active => `<div class="seg"><a data-replace href="#/forum" class="${active === 'forum' ? 'on' : ''}">💬 ${t('cat.topics')}</a><a data-replace href="#/leaderboard" class="${active === 'lb' ? 'on' : ''}">🏆 ${t('lb.tab')}</a><a data-replace href="#/notifs" class="${active === 'notifs' ? 'on' : ''}">🔔 ${t('nt.title')}${notifCount ? `<i class="nbadge">${notifCount}</i>` : ''}</a><a data-replace href="#/dm" class="${active === 'dm' ? 'on' : ''}">✉️ ${t('dm.title')}${dmUnread ? `<i class="nbadge">${dmUnread}</i>` : ''}</a><a data-replace href="#/members" class="${active === 'members' ? 'on' : ''}">👥 ${t('u.members')}</a></div>`;
 async function pollNotifs(force) {
   if (!acct || (!force && Date.now() - notifAt < 45000)) return;
   notifAt = Date.now();
-  try { notifCount = (await capi('GET', '/notifs?count=1')).unread || 0; } catch { return; }
+  try { const r = await capi('GET', '/notifs?count=1'); notifCount = r.unread || 0; dmUnread = r.dm || 0; } catch { return; }
   const tab = document.querySelector('#tabs a[data-tab="forum"]'); if (!tab) return;
   tab.querySelector('.tbadge')?.remove();
-  if (notifCount) tab.insertAdjacentHTML('beforeend', `<i class="tbadge">${notifCount > 9 ? '9+' : notifCount}</i>`);
+  const all = notifCount + dmUnread;
+  if (all) tab.insertAdjacentHTML('beforeend', `<i class="tbadge">${all > 9 ? '9+' : all}</i>`);
 }
 const FORUM_CATS = [['genel', '💬'], ['superlig', '🇹🇷'], ['avrupa', '🌍'], ['transfer', '🔁'], ['tahmin', '🎯'], ['taktik', '🧠'], ['nostalji', '📼'], ['basket', '🏀'], ['tenis', '🎾'], ['f1', '🏎️'], ['diger', '🏐'], ['takim', '🛡️'], ['oneri', '🛠️']];
 const FORUM_SECTIONS = [['general', ['genel', 'oneri']], ['football', ['superlig', 'avrupa', 'transfer', 'tahmin', 'taktik', 'nostalji']], ['other', ['basket', 'tenis', 'f1', 'diger']], ['teams', ['takim']]];
@@ -2354,7 +2573,7 @@ async function viewForum(cat, sort) {
   let posts;
   try { posts = (await capi('GET', `/posts?cat=${cat}&sort=${sort}`)).posts; } catch (e) { return communityNav('forum') + retryBox(e); }
   const composer = cat === 'takim' ? `<div class="card"><div class="form-block"><div class="hint">${t('cat.teamHint')}</div><a class="btn ghost" href="#/search" style="text-align:center">${t('search.title')} ›</a></div></div>`
-    : acct ? `<div class="card"><h2>✍️ ${t('c.newTopic')} · ${catIcon(cat)} ${esc(catName(cat))}</h2><div class="form-block">
+    : topicLock() ? topicLock() : acct ? `<div class="card"><h2>✍️ ${t('c.newTopic')} · ${catIcon(cat)} ${esc(catName(cat))}</h2><div class="form-block">
         <input id="p-title" maxlength="100" placeholder="${esc(t('cat.' + cat + '.ph'))}"><textarea id="p-body" maxlength="2000" rows="4" placeholder="${t('c.text')}"></textarea>
         <button class="btn" data-post-send="${cat}">${t('c.post')}</button><div class="hint" id="p-msg"></div></div></div>` : loginCard();
   const sorts = `<div class="sortbar">${[['active', 'cat.sortActive'], ['new', 'cat.sortNew'], ['top', 'cat.sortTop']].map(([k, l]) => `<a data-replace href="#/forum/${cat}/${k}" class="${sort === k ? 'on' : ''}">${t(l)}</a>`).join('')}</div>`;
@@ -2379,7 +2598,7 @@ async function teamForumHtml(league, id) {
   const ref = `team:${league}:${id}`;
   let posts = [];
   try { posts = (await capi('GET', `/posts?cat=takim&ref=${encodeURIComponent(ref)}&sort=active`)).posts; } catch { return `<div class="empty">⚠️ ${t('c.err.network')}</div>`; }
-  const composer = acct ? `<div class="card"><h2>✍️ ${t('c.newTopic')}</h2><div class="form-block"><input id="p-title" maxlength="100" placeholder="${t('c.title')}"><textarea id="p-body" maxlength="2000" rows="3" placeholder="${t('c.text')}"></textarea>
+  const composer = topicLock() ? topicLock() : acct ? `<div class="card"><h2>✍️ ${t('c.newTopic')}</h2><div class="form-block"><input id="p-title" maxlength="100" placeholder="${t('c.title')}"><textarea id="p-body" maxlength="2000" rows="3" placeholder="${t('c.text')}"></textarea>
       <button class="btn" data-post-send="takim" data-ref="${esc(ref)}">${t('c.post')}</button><div class="hint" id="p-msg"></div></div></div>` : loginCard();
   return composer + (posts.length ? `<div class="card">${posts.map(p => postRow(p, false)).join('')}</div>` : `<div class="empty">${t('cat.noTeamPosts')}</div>`);
 }
@@ -2613,12 +2832,13 @@ document.addEventListener('click', async e => {
   const au = e.target.closest('[data-auth]');
   if (au) {
     const kind = au.dataset.auth, msg = document.getElementById('a-msg');
-    if (kind === 'logout') { try { await capi('POST', '/logout'); } catch {} acct = null; store.set('acct', null); render(); return; }
+    if (kind === 'logout') { try { await capi('POST', '/logout'); } catch {} acct = null; store.set('acct', null); dmPriv = null; dmPub = ''; sharedKeys.clear(); render(); return; }
     const username = document.getElementById('a-user').value.trim(), password = document.getElementById('a-pass').value;
     msg.textContent = t('sending');
     try {
       const r = await capi('POST', '/' + kind, { username, password });
       acct = { token: r.token, user: r.user }; store.set('acct', acct); render();
+      dmPriv = null; dmSetup(password).catch(() => {}); loadBlocks();
     } catch (err) { msg.textContent = '❌ ' + errText(err); }
     return;
   }
@@ -2626,8 +2846,10 @@ document.addEventListener('click', async e => {
   if (e.target.closest('[data-recover]')) {
     const msg = document.getElementById('r-msg');
     try {
-      const r = await capi('POST', '/recover', { username: document.getElementById('r-user').value.trim(), code: document.getElementById('r-code').value, password: document.getElementById('r-pass').value });
+      const np = document.getElementById('r-pass').value;
+      const r = await capi('POST', '/recover', { username: document.getElementById('r-user').value.trim(), code: document.getElementById('r-code').value, password: np });
       acct = { token: r.token, user: r.user }; store.set('acct', acct); render();
+      dmPriv = null; dmSetup(np).catch(() => {});
     } catch (err) { msg.textContent = '❌ ' + errText(err); }
     return;
   }
@@ -2694,10 +2916,270 @@ document.addEventListener('click', async e => {
   }
 });
 
+
+// ---------- ranks (XP from chat, comments, topics, likes received, prediction points, weekly titles)
+const RANK_UI = [['🌱', 'rk.0'], ['🧣', 'rk.1'], ['📣', 'rk.2'], ['©️', 'rk.3'], ['🏆', 'rk.4']];
+const rankMap = new Map(Object.entries(store.get('rankmap', {})));
+const rankIcon = r => RANK_UI[r] ? `<i class="rkic r${r}" title="${esc(t(RANK_UI[r][1]))}">${RANK_UI[r][0]}</i>` : '';
+let rankT = 0;
+function fillRanks() {
+  const els = [...document.querySelectorAll('[data-rk-u]:not([data-rkd])')];
+  if (!els.length || !workerBase()) return;
+  const need = [...new Set(els.map(e => e.dataset.rkU))].filter(u => !rankMap.has(u));
+  const paint = () => els.forEach(e => { const r = rankMap.get(e.dataset.rkU); if (r != null) { e.dataset.rkd = '1'; e.innerHTML = rankIcon(r); } });
+  paint();
+  if (!need.length) return;
+  clearTimeout(rankT);
+  rankT = setTimeout(async () => {
+    try { const d = await capi('GET', '/rank?u=' + encodeURIComponent(need.slice(0, 60).join(','))); for (const [u, r] of Object.entries(d.ranks || {})) rankMap.set(u, r); for (const u of need) if (!rankMap.has(u)) rankMap.set(u, 0); store.set('rankmap', Object.fromEntries([...rankMap].slice(-500))); } catch { return; }
+    paint();
+  }, 150);
+}
+// my rank, XP bar and how to climb (profile page)
+async function rankCard() {
+  let d; try { d = await capi('GET', '/rank?me=1'); } catch { return ''; }
+  if (!d || !Number.isInteger(d.rank) || !Array.isArray(d.ranks) || !RANK_UI[d.rank]) return '';
+  const r = d.rank, next = d.ranks[r + 1], cur = d.ranks[r];
+  const pct = next ? Math.min(100, Math.round((d.xp - cur) / (next - cur) * 100)) : 100;
+  rankMap.set(acct.user.username, r);
+  return `<div class="card rankcard"><h2>${RANK_UI[r][0]} ${t('rk.title')}: <b>${t(RANK_UI[r][1])}</b></h2><div class="form-block">
+    <div class="xpbar"><i style="width:${pct}%"></i></div><div class="hint">${next ? t('rk.next', d.xp, next, t(RANK_UI[r + 1][1])) : t('rk.max', d.xp)}</div>
+    ${r < d.topicRank ? `<div class="hint">🔒 ${t('rk.topicLock', t(RANK_UI[d.topicRank][1]), d.ranks[d.topicRank])}</div>` : `<div class="hint">✅ ${t('rk.topicOk')}</div>`}
+    <details><summary class="hint">${t('rk.how')}</summary><div class="hint">${t('rk.howTxt')}</div>${RANK_UI.map(([ic, k], i) => `<div class="rkline ${i === r ? 'on' : ''}">${ic} <b>${t(k)}</b> <small>${d.ranks[i]} XP</small></div>`).join('')}</details></div></div>`;
+}
+
+// ---------- blocking: their messages, comments and topics disappear for me; no DMs either way
+let blocked = new Set(store.get('blocked', []));
+async function loadBlocks() { if (!acct) return; try { blocked = new Set((await capi('GET', '/blocks')).blocked || []); store.set('blocked', [...blocked]); hideBlocked(); } catch {} }
+function hideBlocked() {
+  if (!blocked.size) return;
+  document.querySelectorAll('[data-user]').forEach(el => { if (blocked.has(el.dataset.user) && !el.closest('.dmthread')) el.classList.add('blk'); });
+}
+async function setBlock(username, on) {
+  await capi('POST', '/blocks', { username, on });
+  on ? blocked.add(username) : blocked.delete(username); store.set('blocked', [...blocked]);
+}
+
+// ---------- end-to-end encrypted direct messages
+// Each member has an ECDH P-256 key pair. The private key never leaves the device unencrypted: it is kept in this browser and,
+// once the password is known, a copy wrapped with a key derived from the password (PBKDF2, 210k rounds) is stored on the server
+// so other devices can open it. Messages are AES-GCM encrypted with the key both sides derive (ECDH) — the server sees ciphertext only.
+const b64e = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const DMK = () => 'dmk:' + (acct?.user?.username || '');
+let dmPriv = null, dmPub = '';
+const sharedKeys = new Map();
+async function pwKey(password, salt) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 210000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function wrapPriv(priv, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const raw = await crypto.subtle.exportKey('pkcs8', priv);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await pwKey(password, salt), raw);
+  return JSON.stringify({ s: b64e(salt), i: b64e(iv), c: b64e(ct) });
+}
+async function unwrapPriv(wrapped, password) {
+  const w = JSON.parse(wrapped);
+  const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(w.i) }, await pwKey(password, b64d(w.s)), b64d(w.c));
+  return crypto.subtle.importKey('pkcs8', raw, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+}
+async function keepLocal(priv, pub) {
+  dmPriv = priv; dmPub = pub; sharedKeys.clear();
+  try { store.set(DMK(), { priv: await crypto.subtle.exportKey('jwk', priv), pub }); } catch {}
+}
+async function loadLocalKey() {
+  if (dmPriv) return true;
+  const k = store.get(DMK(), null);
+  if (!k?.priv) return false;
+  try { dmPriv = await crypto.subtle.importKey('jwk', k.priv, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']); dmPub = k.pub; return true; } catch { return false; }
+}
+async function newKeyPair(password, reset) {
+  const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+  const pub = JSON.stringify(await crypto.subtle.exportKey('jwk', kp.publicKey));
+  await capi('POST', '/dm/key', { pub, wrapped: password ? await wrapPriv(kp.privateKey, password) : '', reset: !!reset });
+  await keepLocal(kp.privateKey, pub);
+}
+// called with the password after login / register / recovery, and from the DM page's unlock box
+async function dmSetup(password) {
+  if (!acct || !crypto.subtle) return 'nocrypto';
+  const s = await capi('GET', '/dm/key').catch(() => null);
+  if (!s) return 'offline';
+  if (!s.pub) { await newKeyPair(password, false); return 'new'; }
+  if (s.wrapped && password) {
+    try { await keepLocal(await unwrapPriv(s.wrapped, password), s.pub); return 'ok'; }
+    catch { if (await loadLocalKey() && dmPub === s.pub) return 'ok'; await newKeyPair(password, true); return 'reset'; } // the password changed through recovery: the old key is gone
+  }
+  if (await loadLocalKey() && dmPub === s.pub) { if (!s.wrapped && password) await capi('POST', '/dm/key', { pub: s.pub, wrapped: await wrapPriv(dmPriv, password) }).catch(() => {}); return 'ok'; }
+  if (!s.wrapped && password) { await newKeyPair(password, true); return 'reset'; }
+  return s.wrapped ? 'locked' : 'otherdevice';
+}
+// a member who is logged in but never typed the password since this update still gets a key (kept on this device)
+async function dmEnsure() {
+  if (!acct) return 'nologin';
+  if (await loadLocalKey()) {
+    const s = await capi('GET', '/dm/key').catch(() => null);
+    if (s && s.pub && s.pub !== dmPub) { dmPriv = null; dmPub = ''; return s.wrapped ? 'locked' : 'otherdevice'; }
+    if (s && !s.pub) await capi('POST', '/dm/key', { pub: dmPub, wrapped: '' }).catch(() => {});
+    return 'ok';
+  }
+  const s = await capi('GET', '/dm/key').catch(() => null);
+  if (!s) return 'offline';
+  if (!s.pub) { await newKeyPair('', false); return 'ok'; }
+  return s.wrapped ? 'locked' : 'otherdevice';
+}
+async function sharedKey(theirPub) {
+  if (sharedKeys.has(theirPub)) return sharedKeys.get(theirPub);
+  const pub = await crypto.subtle.importKey('jwk', JSON.parse(theirPub), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const k = await crypto.subtle.deriveKey({ name: 'ECDH', public: pub }, dmPriv, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  sharedKeys.set(theirPub, k); return k;
+}
+async function dmEncrypt(theirPub, text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await sharedKey(theirPub), new TextEncoder().encode(text));
+  return { iv: b64e(iv), ct: b64e(ct) };
+}
+async function dmDecrypt(theirPub, iv, ct) {
+  if (!iv || !ct || !theirPub || !dmPriv) return null;
+  try { return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(iv) }, await sharedKey(theirPub), b64d(ct))); } catch { return null; }
+}
+const dmUnlockHtml = st => `<div class="card dmlock"><h2>🔐 ${t('dm.lockTitle')}</h2><div class="form-block"><div class="hint">${t(st === 'otherdevice' ? 'dm.otherDevice' : 'dm.lockHint')}</div>
+  ${st === 'otherdevice' ? '' : `<input id="dm-pw" type="password" autocomplete="current-password" placeholder="${esc(t('c.password'))}"><button class="btn" data-dm-unlock>${t('dm.unlock')}</button>`}
+  <button class="btn ghost" data-dm-reset>${t('dm.resetKey')}</button><div class="hint" id="dm-msg"></div></div></div>`;
+let dmUnread = 0;
+const fmtAgo = ts => { const s = Date.now() / 1000 - ts; return s < 60 ? t('dm.now') : s < 3600 ? Math.floor(s / 60) + t('dm.m') : s < 86400 ? Math.floor(s / 3600) + t('dm.h') : fmtD(ts * 1000, { day: 'numeric', month: 'short' }); };
+
+async function viewDm(who) {
+  const tab = who === '_req' ? 'req' : 'all';
+  if (who && who !== '_req') return viewDmThread(decodeURIComponent(who));
+  setTitle(t('dm.title'));
+  if (!acct) return communityNav('dm') + authForm();
+  const st = await dmEnsure();
+  const d = await capi('GET', '/dm').catch(() => ({ convs: [] }));
+  const reqs = d.convs.filter(c => c.request && c.last && !c.last.me), main = d.convs.filter(c => !(c.request && c.last && !c.last.me));
+  const list = tab === 'req' ? reqs : main;
+  const rows = await Promise.all(list.map(async c => {
+    const txt = c.last ? (c.blocked ? t('dm.blockedShort') : (await dmDecrypt(c.user.pub, c.last.iv, c.last.ct)) ?? '🔒 ' + t('dm.encrypted')) : '';
+    return `<a class="dmrow ${c.unread ? 'unread' : ''}" href="#/dm/${encodeURIComponent(c.user.username)}">${avatar(c.user, 44)}<span class="dmmid"><b>${esc(c.user.username)} ${rankIcon(c.user.rank)}</b><small>${c.last?.me ? t('dm.you') + ': ' : ''}${esc(txt.slice(0, 70))}</small></span><span class="dmend"><small>${fmtAgo(c.last_at)}</small>${c.unread ? `<i class="nbadge">${c.unread}</i>` : ''}</span></a>`;
+  }));
+  const tabs = `<div class="chips"><a data-replace href="#/dm" class="${tab === 'all' ? 'on' : ''}">💬 ${t('dm.chats')}</a><a data-replace href="#/dm/_req" class="${tab === 'req' ? 'on' : ''}">📨 ${t('dm.requests')}${reqs.length ? ` <i class="nbadge">${reqs.length}</i>` : ''}</a></div>`;
+  const search = `<div class="card"><div class="form-block"><input id="dm-q" type="search" autocapitalize="off" placeholder="${esc(t('dm.newPh'))}"><div id="dm-qres"></div></div></div>`;
+  const lock = st === 'locked' || st === 'otherdevice' ? dmUnlockHtml(st) : '';
+  const e2e = `<div class="hint e2e">🔒 ${t('dm.e2e')}</div>`;
+  return communityNav('dm') + lock + search + tabs + (rows.length ? `<div class="card dmlist">${rows.join('')}</div>` : `<div class="empty">${t(tab === 'req' ? 'dm.noReq' : 'dm.none')}</div>`) + e2e;
+}
+let dmPoll = 0, dmState = null;
+async function viewDmThread(name) {
+  setTitle(name);
+  if (!acct) return authForm();
+  const st = await dmEnsure();
+  const d = await capi('GET', '/dm/u/' + encodeURIComponent(name));
+  dmState = { name, pub: d.partner.pub, last: d.msgs.length ? d.msgs[d.msgs.length - 1].id : 0, theirRead: d.theirRead };
+  const head = `<div class="card dmhead"><a href="#/user/${encodeURIComponent(name)}">${avatar(d.partner, 40)}<span><b>${esc(name)} ${rankIcon(d.partner.rank)}</b><small>${d.partner.pub ? '🔒 ' + t('dm.e2eShort') : t('dm.noKey')}</small></span></a>
+    <details class="dmmenu"><summary>⋯</summary><div><button data-dm-act="block" data-u="${esc(name)}">${d.blockedByMe ? '✅ ' + t('dm.unblock') : '⛔ ' + t('dm.block')}</button><button data-dm-act="hide" data-u="${esc(name)}">🗑️ ${t('dm.deleteChat')}</button><a href="#/user/${encodeURIComponent(name)}">👤 ${t('dm.profile')}</a></div></details></div>`;
+  if (st === 'locked' || st === 'otherdevice') return head + dmUnlockHtml(st);
+  const bubbles = await dmBubbles(d.msgs, d.partner.pub, d.theirRead);
+  const req = d.request && d.msgs.some(m => !m.me) ? `<div class="card dmreq"><div class="form-block"><b>${t('dm.reqTitle', esc(name))}</b><div class="hint">${t('dm.reqHint')}</div><div class="modbtns"><button class="btn" data-dm-act="accept" data-u="${esc(name)}">${t('dm.accept')}</button><button class="btn ghost" data-dm-act="hide" data-u="${esc(name)}">${t('dm.decline')}</button><button class="btn ghost" data-dm-act="block" data-u="${esc(name)}">⛔ ${t('dm.block')}</button></div></div></div>` : '';
+  const pending = !d.accepted && d.msgs.some(m => m.me) ? `<div class="hint" style="text-align:center;padding:6px">${t('dm.pending')}</div>` : '';
+  const off = d.blockedByMe ? t('dm.youBlocked') : d.blockedMe ? t('dm.cantSend') : !d.partner.pub ? t('dm.noKeyLong') : '';
+  const box = off ? `<div class="empty">${off}</div>` : `<div class="dmcompose"><textarea id="dm-text" rows="1" maxlength="2000" placeholder="${esc(t('dm.ph'))}"></textarea><button class="btn" data-dm-send aria-label="${t('dm.send')}">➤</button></div>`;
+  return head + req + `<div class="dmthread" id="dm-thread">${bubbles || `<div class="empty">${t('dm.start', esc(name))}</div>`}</div>` + pending + box;
+}
+async function dmBubbles(msgs, pub, theirRead) {
+  let html = '', last = '';
+  const lastMine = [...msgs].reverse().find(m => m.me && !m.deleted)?.id;
+  for (const m of msgs) {
+    const day = dayOfTs(m.created); if (day !== last) { html += daySep(m.created); last = day; }
+    const txt = m.deleted ? null : await dmDecrypt(pub, m.iv, m.ct);
+    const body = m.deleted ? `<i class="hint">${t('dm.unsent')}</i>` : txt == null ? `<i class="hint">🔒 ${t('dm.cantRead')}</i>` : esc(txt).replace(/\n/g, '<br>');
+    html += `<div class="bub ${m.me ? 'mine' : ''}" data-dmid="${m.id}"><div class="bubbody"><div class="bubtext">${body}</div><div class="bubfoot">${clockOf(m.created)}${m.me && m.id === lastMine && theirRead >= m.id ? ` · ${t('dm.seen')}` : ''}
+      ${m.deleted ? '' : m.me ? `<button class="cbtn txt" data-dm-act="unsend" data-id="${m.id}">↩︎ ${t('dm.unsend')}</button>` : `<button class="cbtn txt" data-dm-act="report" data-id="${m.id}">🚩</button>`}</div></div></div>`;
+  }
+  return html;
+}
+async function dmRefresh() {
+  if (!dmState || !location.hash.startsWith('#/dm/') || document.hidden) return;
+  const box = document.getElementById('dm-thread'); if (!box) return;
+  let d; try { d = await capi('GET', `/dm/u/${encodeURIComponent(dmState.name)}`); } catch { return; }
+  const lastId = d.msgs.length ? d.msgs[d.msgs.length - 1].id : 0;
+  if (lastId === dmState.last && d.theirRead === dmState.theirRead && d.msgs.length === box.querySelectorAll('[data-dmid]').length && !d.msgs.some(m => m.deleted && box.querySelector(`[data-dmid="${m.id}"] [data-dm-act="unsend"],[data-dmid="${m.id}"] [data-dm-act="report"]`))) return;
+  const atEnd = scrollY + innerHeight > document.body.scrollHeight - 160;
+  dmState.last = lastId; dmState.theirRead = d.theirRead; dmState.pub = d.partner.pub;
+  box.innerHTML = await dmBubbles(d.msgs, d.partner.pub, d.theirRead);
+  if (atEnd) scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+}
+setInterval(dmRefresh, 3000);
+document.addEventListener('click', async e => {
+  const send = e.target.closest('[data-dm-send]');
+  if (send && dmState) {
+    const ta = document.getElementById('dm-text'), text = ta.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    try {
+      if (!dmPriv && !(await loadLocalKey())) throw new Error(t('dm.lockTitle'));
+      await capi('POST', '/dm/u/' + encodeURIComponent(dmState.name), await dmEncrypt(dmState.pub, text));
+      ta.value = ''; await dmRefresh(); scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+    } catch (err) { alert(errText(err)); }
+    send.disabled = false; ta.focus();
+    return;
+  }
+  const act = e.target.closest('[data-dm-act]');
+  if (act) {
+    const k = act.dataset.dmAct, u = act.dataset.u || dmState?.name;
+    try {
+      if (k === 'unsend') { await capi('POST', `/dm/m/${act.dataset.id}/unsend`); await dmRefresh(); return; }
+      if (k === 'report') { const txt = act.closest('.bub')?.querySelector('.bubtext')?.innerText || ''; if (!confirm(t('dm.reportQ'))) return; await capi('POST', `/dm/u/${encodeURIComponent(u)}/report`, { text: txt }); act.textContent = '✓'; return; }
+      if (k === 'accept') { await capi('POST', `/dm/u/${encodeURIComponent(u)}/accept`); render(); return; }
+      if (k === 'hide') { if (!confirm(t('dm.deleteQ'))) return; await capi('POST', `/dm/u/${encodeURIComponent(u)}/hide`); location.hash = '#/dm'; return; }
+      if (k === 'block') { const on = !blocked.has(u); if (on && !confirm(t('dm.blockQ', u))) return; await setBlock(u, on); render(); return; }
+    } catch (err) { alert(errText(err)); }
+    return;
+  }
+  if (e.target.closest('[data-dm-unlock]')) {
+    const msg = document.getElementById('dm-msg'), pw = document.getElementById('dm-pw').value;
+    msg.textContent = t('sending');
+    // the password is checked by the server first (a wrong one must not reset the key)
+    try { await capi('POST', '/login', { username: acct.user.username, password: pw }).then(r => { acct = { token: r.token, user: r.user }; store.set('acct', acct); }); } catch (err) { msg.textContent = '❌ ' + errText(err); return; }
+    const r = await dmSetup(pw).catch(() => 'offline');
+    msg.textContent = r === 'ok' || r === 'new' ? '✅' : r === 'reset' ? '⚠️ ' + t('dm.wasReset') : '❌ ' + t('c.err.network');
+    setTimeout(render, 500);
+    return;
+  }
+  if (e.target.closest('[data-dm-reset]')) {
+    if (!confirm(t('dm.resetQ'))) return;
+    try { await newKeyPair('', true); render(); } catch (err) { alert(errText(err)); }
+    return;
+  }
+  const blk = e.target.closest('[data-block-user]');
+  if (blk) {
+    const u = blk.dataset.blockUser, on = !blocked.has(u);
+    if (on && !confirm(t('dm.blockQ', u))) return;
+    try { await setBlock(u, on); render(); } catch (err) { alert(errText(err)); }
+  }
+});
+document.addEventListener('keydown', e => { if (e.target.id === 'dm-text' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.querySelector('[data-dm-send]')?.click(); } });
+document.addEventListener('input', e => {
+  if (e.target.id === 'dm-text') { e.target.style.height = 'auto'; e.target.style.height = Math.min(140, e.target.scrollHeight) + 'px'; return; }
+  if (e.target.id !== 'dm-q') return;
+  clearTimeout(window._dmq);
+  window._dmq = setTimeout(async () => {
+    const q = e.target.value.trim(), box = document.getElementById('dm-qres'); if (!box) return;
+    if (q.length < 2) { box.innerHTML = ''; return; }
+    const d = await capi('GET', '/users?q=' + encodeURIComponent(q)).catch(() => ({ users: [] }));
+    box.innerHTML = d.users.filter(u => u.username !== acct?.user?.username && !u.banned).slice(0, 8).map(u => `<a class="lrow" href="#/dm/${encodeURIComponent(u.username)}">${avatar(u, 28)}<span class="nm" style="padding:8px 10px">${esc(u.username)}</span><span class="go">✉️</span></a>`).join('') || `<div class="hint">${t('u.none')}</div>`;
+  }, 350);
+});
+
+// topic composer only for ranked members (the server checks it too)
+const topicLock = () => { const r = rankMap.get(acct?.user?.username); return acct && !isAdminUser() && r != null && r < 2 ? `<div class="card"><div class="form-block"><b>🔒 ${t('rk.lockTitle')}</b><div class="hint">${t('rk.topicLock', t(RANK_UI[2][1]), 150)}</div><a class="btn ghost" href="#/profile" style="text-align:center">${t('rk.see')} ›</a></div></div>` : ''; };
+// keep blocked members hidden and rank icons filled whatever part of the page changes (chat, comments, lazy boxes)
+{ let mo = 0; new MutationObserver(() => { clearTimeout(mo); mo = setTimeout(() => { hideBlocked(); fillRanks(); }, 60); }).observe(document.getElementById('app'), { childList: true, subtree: true }); }
+if (acct) setTimeout(() => { loadBlocks(); dmEnsure().catch(() => {}); capi('GET', '/rank?me=1').then(d => { rankMap.set(acct.user.username, d.rank); }).catch(() => {}); }, 2500);
+
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, members: viewMembers, legend: viewLegend, article: viewArticle, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, admin: viewAdmin, members: viewMembers, legend: viewLegend, article: viewArticle, dm: viewDm, vplayer: viewVPlayer, tt: viewTffTeam, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -2716,7 +3198,7 @@ let renderTok = 0, lastTab = 'matches', lastHash = null;
 // pages come back instantly from memory and refresh in the background; scroll position is restored on back
 const pageCache = new Map(), scrollMap = {};
 let navBack = false;
-const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare', 'members', 'user', 'article'].includes(r);
+const cacheable = r => !['profile', 'settings', 'notifs', 'search', 'compare', 'members', 'user', 'article', 'dm'].includes(r);
 const pkey = () => [location.hash, curSport, LANG, acct?.user?.id || 0].join('|');
 try { history.scrollRestoration = 'manual'; } catch {} // the app restores each page's scroll itself
 const TAB_ROUTES = ['matches', 'favs', 'leagues', 'forum', 'profile', 'settings'];
@@ -2736,10 +3218,10 @@ async function render(silent = false) {
   const route = routes[r] ? r : 'matches';
   if (['matches', 'favs', 'leagues', 'settings'].includes(route)) lastTab = route;
   if (['league', 'table'].includes(route)) lastTab = 'leagues';
-  if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members'].includes(route)) lastTab = 'forum';
+  if (['forum', 'post', 'user', 'leaderboard', 'notifs', 'members', 'dm'].includes(route)) lastTab = 'forum';
   if (route === 'profile' || route === 'admin') lastTab = 'profile';
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === lastTab));
-  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article'].includes(route) && !(route === 'settings' && args[0]);
+  $('#back').hidden = !['match', 'team', 'league', 'table', 'tff', 'post', 'user', 'player', 'vplayer', 'tt', 'search', 'compare', 'admin', 'legend', 'members', 'article'].includes(route) && !(route === 'settings' && args[0]) && !(route === 'dm' && args[0] && args[0] !== '_req');
   $('#hlogo').hidden = !$('#back').hidden;
   const tok = ++renderTok;
   let instant = null, dir = 'same', instY = null;
@@ -3003,13 +3485,14 @@ document.addEventListener('click', async e => {
   if (fb) {
     e.preventDefault(); // stars can sit inside a team link
     const id = fb.dataset.fav;
-    favs = isFav(id, fb.dataset.league) ? favs.filter(f => !(f.id == id && sportOf(f.league) === sportOf(fb.dataset.league))) : [...favs, { id, name: fb.dataset.name, league: fb.dataset.league }];
+    favs = isFav(id, fb.dataset.league) ? favs.filter(f => !(f.id == id && sportOf(f.league) === sportOf(fb.dataset.league))) : [...favs, { id, name: fb.dataset.name, league: fb.dataset.league, ...(fb.dataset.grup ? { grup: fb.dataset.grup } : {}) }];
     store.set('favs', favs);
     if ((notif.key || notif.push)) syncNotify().catch(() => {});
     render(true);
   }
 });
 document.addEventListener('change', e => {
+  if (e.target.matches('[data-team-theme]')) { setTeamTheme(e.target.value).catch(() => {}); return; }
   if (e.target.matches('[data-team-season]')) { location.replace('#/team/' + e.target.dataset.teamSeason + '/' + e.target.value); return; }
   if (e.target.matches('[data-league-season]')) { leagueSeason[e.target.dataset.leagueSeason] = +e.target.value; location.replace(`#/league/${e.target.dataset.leagueSeason}/fikstur`); render(); return; }
   if (e.target.matches('[data-month-pick]')) { location.replace(`#/league/${e.target.dataset.monthPick}/fikstur/${e.target.value}`); return; }
@@ -3056,6 +3539,9 @@ setInterval(() => {
 
 applyStatic();
 render();
+// offline: a thin bar on top; the service worker answers with the last saved data
+{ const bar = () => { let b = document.getElementById('offbar'); if (navigator.onLine) { b?.remove(); return; } if (!b) { b = document.createElement('div'); b.id = 'offbar'; document.body.prepend(b); } b.textContent = '📴 ' + t('off.banner'); };
+  addEventListener('online', () => { bar(); render(true); }); addEventListener('offline', bar); bar(); }
 setTimeout(() => probeLeagues().catch(() => {}), 4000);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
