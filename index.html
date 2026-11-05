@@ -419,6 +419,29 @@ nav#tabs a .tav{width:24px;height:24px;border-radius:50%;display:grid;place-item
 .pp .pph img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover;object-position:top;background:#1d3d2a}.pp .pin_{font-size:14px;color:#cfe}
 .pp .pno{position:absolute;right:-6px;bottom:-4px;min-width:19px;padding:1px 4px;border-radius:9px;background:#0b1a33;color:#fff;font-size:10.5px;font-weight:800;font-style:normal;border:1.5px solid #fff;text-align:center}
 .pp b{font-size:11px;font-weight:700;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+/* pitch v2: bigger faces, number in the team colour, goal / card / substitution marks, full markings */
+.pitch{aspect-ratio:3/4.4;background:repeating-linear-gradient(0deg,#2f8f40 0 10%,#2a8439 10% 20%)}
+.pitch .pl-box.tb{top:-2px;bottom:auto;width:50%;height:9%}.pl-mid{position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(255,255,255,.35)}
+.pp{width:78px}.pp .pph{width:52px;height:52px;border-width:2.5px}.pp b{max-width:78px;font-size:11.5px;background:rgba(0,0,0,.38);padding:1px 7px;border-radius:9px;text-shadow:none}
+.pp .pin_{font-size:17px}.pp .pno{background:var(--tc,#0b1a33);right:-7px;bottom:-5px;min-width:21px;font-size:11px}
+.pp.off .pph{opacity:.78}
+.pmk{position:absolute;font-style:normal;font-size:13px;line-height:1;display:flex;align-items:center;z-index:2}.pmk s{text-decoration:none;font-size:10px;font-weight:800;color:#fff;margin-left:1px;text-shadow:0 1px 2px #000}
+.pmk.g{left:-9px;top:-5px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.pmk.y,.pmk.r{right:-5px;top:-5px;width:11px;height:15px;border-radius:2px;border:1px solid rgba(0,0,0,.35)}.pmk.y{background:#facc15}.pmk.r{background:#ef4444}
+.pmk.o{left:-6px;bottom:-4px;width:17px;height:17px;border-radius:50%;background:#ef4444;color:#fff;font-size:11px;font-weight:800;justify-content:center;border:1.5px solid #fff}
+.tinit{width:18px;height:18px;border-radius:50%;background:var(--card2);color:var(--accent);font-size:10px;font-weight:800;display:grid;place-items:center;flex:none;border:1px solid var(--line)}
+.livenote{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:8px 12px;border-radius:12px;background:#fef2f2;color:#b91c1c;font-size:12.5px;font-weight:600}
+.lvpulse{width:9px;height:9px;border-radius:50%;background:#ef4444;flex:none;animation:lvp 1.2s infinite}@keyframes lvp{0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}100%{box-shadow:0 0 0 8px rgba(239,68,68,0)}}
+.lvdot{margin-left:6px;padding:0 6px;border-radius:8px;background:#ef4444;color:#fff;font-size:10.5px;font-weight:700}
+tr.livetr td.lv{color:#dc2626;font-weight:700}.mv{font-style:normal;font-size:10px;font-weight:700;margin-left:3px}.mv.up{color:#16a34a}.mv.dn{color:#dc2626}
+html[data-theme="dark"] .livenote{background:#3b1517;color:#fca5a5}
+.pcode{font-style:normal;font-size:10.5px;font-weight:700;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);padding:1px 6px;border-radius:7px;margin-right:4px;border:0;font-family:inherit}
+.pcode.big{font-size:12.5px;padding:3px 9px;cursor:pointer}
+.coderow{display:flex;gap:8px}.coderow input{flex:1;min-width:0;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit}.coderow .btn{flex:none;padding:0 18px}
+.boxt{width:100%;border-collapse:collapse;font-size:13px}.boxt th,.boxt td{padding:7px 5px;text-align:center;border-top:1px solid var(--line)}.boxt th{font-size:11px;color:var(--muted);font-weight:600;border-top:0}.boxt td.t{text-align:left}.boxt td.t a{color:var(--text);font-weight:600;text-decoration:none}.boxt td.p{font-weight:800}
+a.match .logo.ph{display:inline-block}
+.mtime.ppd{color:#d97706;font-weight:700;font-size:11px;line-height:1.15}.st.ppd{color:#d97706;font-weight:700}
+.mid .tvtag{margin-top:6px;max-width:132px;white-space:normal;text-align:center;line-height:1.25;font-size:11px;padding:3px 8px}
 
 html{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}a,button,label,summary{touch-action:manipulation}
 button:not(.iconbtn):active,.btn:active,.cbtn:active,.catchip:active,.tcell:active,.pcard:active,.board:active{transform:scale(.975)}
@@ -475,6 +498,7 @@ h2 .lgi{vertical-align:-4px;margin-right:4px}
 .chatin{flex:1;min-width:0;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit}
 .chatsend{width:48px;flex:none;border-radius:12px;background:var(--grad);color:#fff;font-size:18px}
 .chatbar.login{flex-direction:column;align-items:stretch;text-align:center}
+.chatbar.cool .chatin{background:var(--card2);color:var(--muted);border-style:dashed}.chatbar.cool .chatsend{background:var(--card2);color:var(--muted);box-shadow:none;font-size:15px;font-weight:700}
 .chaterr{color:var(--live);min-height:16px;margin-top:4px}
 .modbtns{display:flex;flex-wrap:wrap;gap:6px}
 .modbtns button{padding:9px 11px;border-radius:10px;background:var(--card2);border:1px solid var(--line);font-size:12.5px;font-weight:600}
@@ -583,7 +607,7 @@ html[data-theme="dark"] img.logo{background:transparent}
   <a href="#/profile" data-tab="profile"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></i><span>Profil</span></a>
   <a href="#/settings" data-tab="settings"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></i><span>Ayarlar</span></a>
 </nav>
-<script src="i18n.js?v=33"></script>
-<script src="app.js?v=33"></script>
+<script src="i18n.js?v=34"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>
