@@ -85,6 +85,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 let favs = store.get('favs', []); // [{id, name, league}]
+let xfavs = store.get('xfavs', []); // teams of handball / volleyball / European basketball: [{sport, name}]
 let enabled = store.get('leagues', ['tur.1', 'tur.cup', 'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'eng.1', 'esp.1', 'ita.1', 'ger.1', 'fra.1']);
 // the Turkish Cup arrived later: switch it on once for people who already saved a league list
 // women's football: the main competitions are switched on once for everyone (they can be turned off in Settings)
@@ -221,6 +222,25 @@ let curSport = store.get('sport', 'soccer');
 const scrollBar = inner => `<div class="sbwrap"><button class="sbarr l" data-sbar="-1" aria-label="‹">‹</button>${inner}<button class="sbarr r" data-sbar="1" aria-label="›">›</button></div>`;
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${ic}</span>${t(k)}</button>`).join('')}</div>`);
 
+// ---- calendar (.ics): one match, or every upcoming match of the favourite teams ----
+const icsEsc = x => String(x || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\r?\n/g, '\\n');
+const icsStamp = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+function icsBuild(list) {
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Grafondex//Live Score//TR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const e of list) {
+    const st = Date.parse(e.s); if (!st) continue;
+    L.push('BEGIN:VEVENT', `UID:${icsStamp(st)}-${(e.t || '').replace(/\W/g, '').slice(0, 24)}@grafondex`, `DTSTAMP:${icsStamp(Date.now())}`, `DTSTART:${icsStamp(st)}`, `DTEND:${icsStamp(st + (e.d || 120) * 60000)}`,
+      `SUMMARY:${icsEsc(e.t)}`, ...(e.w ? [`LOCATION:${icsEsc(e.w)}`] : []), 'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(e.t)}`, 'TRIGGER:-PT30M', 'END:VALARM', 'END:VEVENT');
+  }
+  L.push('END:VCALENDAR');
+  return L.join('\r\n');
+}
+function icsSave(list, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([icsBuild(list)], { type: 'text/calendar;charset=utf-8' }));
+  a.download = name + '.ics'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const calBtn = (title, iso, where, mins = 120) => iso ? `<div class="form-block"><button class="btn ghost" data-ics data-ics-t="${esc(title)}" data-ics-s="${esc(iso)}" data-ics-w="${esc(where || '')}" data-ics-d="${mins}">📅 ${t('o.cal')}</button></div>` : '';
 // ---- Matches tab ----
 const otherRow = (it, sport, day) => {
   if (it.kind === 'race') return `<div class="match static race"><div class="mtime ${it.state}">${it.state === 'in' ? '<span class="livedot"></span>' : ''}${esc(it.state === 'pre' ? hm(it.time) : (it.text || ''))}</div>
@@ -233,7 +253,57 @@ const otherRow = (it, sport, day) => {
 // ---- game page for the sports that come from the server (basketball in Europe, volleyball, handball, tennis ...) ----
 const EUL = 'https://api-live.euroleague.net/v2';
 const euSeason = (comp, iso) => { const d = iso ? new Date(iso) : new Date(); return comp + (d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1); };
-const euName = n => String(n || '').split(',').map(s => s.trim().toLocaleLowerCase('tr').replace(/(^|[\s\-'])(\p{L})/gu, (_, a, b) => a + b.toLocaleUpperCase('tr'))).reverse().join(' ');
+const euName = n => String(n || '').split(',').map(s => s.trim().toLowerCase().replace(/(^|[\s\-'])(\p{L})/gu, (_, a, b) => a + b.toUpperCase())).reverse().join(' ');
+// ---- league tables and team pages of the sports that come from the server ----
+const srcSport = k => { const [a, b] = String(k).split(':'); const s = a === 'thf' ? 'handball' : a === 'tvf' ? 'volley' : a === 'eu' ? 'basketball' : a === 'as' ? b : k; return s === 'volleyball' ? 'volley' : s === 'eubasket' ? 'basketball' : s; };
+const ZC = { green: '#2ecc71', blue: '#3498db', red: '#e5484d' };
+function otherTableHtml(g, hl, sport) {
+  const hasD = g.rows.some(r => r.d != null), hasP = g.rows.some(r => r.p != null && r.p !== r.g);
+  const n = x => x == null || x === '' ? '–' : esc(x);
+  const norm = s => String(s || '').toLocaleLowerCase('tr');
+  const body = g.rows.map(r => {
+    const z = g.zones.find(z => r.pos >= z.from && r.pos <= z.to), me = hl && (norm(r.name) === norm(hl) || norm(r.name).includes(norm(hl)) || norm(hl).includes(norm(r.name)));
+    return `<tr class="${me ? 'fav' : ''}"><td class="r" style="border-left-color:${z ? ZC[z.c] : 'transparent'}">${esc(r.pos)}</td><td class="tmc" style="color:var(--text)">${r.logo ? `<img class="logo" src="${esc(r.logo)}" alt="" onerror="this.remove()"> ` : ''}<a href="#/tx/${esc(sport)}/${encodeURIComponent(r.name)}" style="color:inherit">${esc(r.name)}</a></td><td>${n(r.o)}</td><td>${n(r.g)}</td>${hasD ? `<td>${n(r.d)}</td>` : ''}<td>${n(r.m)}</td>${r.f != null ? `<td>${n(r.f)}–${n(r.a)}</td>` : ''}${hasP ? `<td><b>${n(r.p)}</b></td>` : ''}</tr>`;
+  }).join('');
+  const hasF = g.rows.some(r => r.f != null);
+  const legend = g.zones.map(z => `<span style="margin-right:12px"><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ZC[z.c]};margin-right:5px"></i>${t('z.' + z.l)}</span>`).join('');
+  return `${g.name ? `<h2>${esc(g.name)}</h2>` : ''}<div class="stwrap"><table class="stbl"><thead><tr><th>#</th><th class="tmc">${t('th.team')}</th><th>O</th><th>G</th>${hasD ? '<th>B</th>' : ''}<th>M</th>${hasF ? '<th>+/–</th>' : ''}${hasP ? '<th>P</th>' : ''}</tr></thead><tbody>${body}</tbody></table></div><div class="hint" style="padding:6px 14px 12px">${legend}</div>`;
+}
+async function viewOtherTable(rawSrc, hl) {
+  const src = decodeURIComponent(rawSrc || ''); setTitle(t('o.standings'));
+  const d = await get(`${workerBase()}/tstand?src=${encodeURIComponent(src)}`, 60000).catch(() => null);
+  if (!d || d.error || !d.groups?.length) return `<div class="empty">${d?.error === 'needKey' ? t('c.needKey') : t('o.noTable')}</div>`;
+  setTitle(d.title || t('o.standings'));
+  return `<div class="card">${d.groups.map(g => otherTableHtml(g, hl ? decodeURIComponent(hl) : '', srcSport(src))).join('')}</div>`;
+}
+async function viewTeamX(sport, rawName) {
+  const name = decodeURIComponent(rawName || ''); setTitle(name);
+  const c = await get(`${workerBase()}/tcomps?sport=${encodeURIComponent(sport)}&name=${encodeURIComponent(name)}`, 300000).catch(() => ({ comps: [], games: [] }));
+  const tabs = await Promise.all((c.comps || []).map(x => get(`${workerBase()}/tstand?src=${encodeURIComponent(x.src)}`, 60000).then(d => ({ x, d })).catch(() => ({ x, d: null }))));
+  const norm = s => String(s || '').toLocaleLowerCase('tr'), me = r => norm(r.name) === norm(name) || norm(r.name).includes(norm(name)) || norm(name).includes(norm(r.name));
+  const found = tabs.map(({ x, d }) => { for (const g of d?.groups || []) { const r = g.rows.find(me); if (r) return { x, d, g, r }; } return null; }).filter(Boolean);
+  const logo = found.map(f => f.r.logo).find(Boolean);
+  const isFavX = xfavs.some(f => f.sport === sport && f.name === name);
+  const hero = `<div class="card hero plhero"><div class="plpic" style="--pc:${pcol(name)}"><span class="pin_">${esc(initials(name))}</span>${logo ? `<img src="${esc(logo)}" alt="" style="object-fit:contain" onerror="this.remove()">` : ''}</div>
+    <div style="font-size:21px;font-weight:700;margin-top:8px">${esc(name)}</div>
+    <div class="st">${found.map(f => `<a href="#/ostand/${encodeURIComponent(f.x.src)}/${encodeURIComponent(name)}" class="chip">${esc(f.d.title || f.x.title)} · ${t('o.rank', f.r.pos)}</a>`).join(' ') || ''}</div>
+    <button class="favbtn ${isFavX ? 'on' : ''}" data-xfav="${esc(sport)}|${esc(name)}">${isFavX ? t('inFavs') : t('addFav')}</button></div>`;
+  const tables = found.map(f => `<div class="card"><h2>${esc(f.d.title || f.x.title)}<a href="#/ostand/${encodeURIComponent(f.x.src)}/${encodeURIComponent(name)}">${t('o.standings')}</a></h2>${otherTableHtml(f.g, name, srcSport(f.x.src))}</div>`).join('');
+  const games = (c.games || []).slice(0, 12);
+  const gHtml = games.length ? `<div class="card"><h2>${t('o.games')}</h2>${games.map(g => `<a class="match" href="#/game/${esc(sport === 'basketball' ? 'eubasket' : sport)}/${esc(g.id)}/${esc(g.day)}"><div class="mtime ${g.state}">${esc(g.state === 'pre' ? dshort(g.time) + ' ' + hm(g.time) : g.state === 'in' ? t('live') : dshort(g.time))}</div><div class="teams"><div class="tm"><span class="tn">${esc(g.home)}</span><b class="ts ${g.state}">${esc(g.hs ?? '')}</b></div><div class="tm"><span class="tn">${esc(g.away)}</span><b class="ts ${g.state}">${esc(g.as ?? '')}</b></div></div></a>`).join('')}</div>` : '';
+  // EuroLeague / EuroCup clubs: the squad from the official API, every player has a profile
+  let squad = '';
+  const eu = found.find(f => f.x.src.startsWith('eu:') && f.r.code);
+  if (eu) {
+    const comp = eu.x.src.split(':')[1], season = euSeason(comp);
+    const ppl = await get(`${EUL}/competitions/${comp}/seasons/${season}/clubs/${eu.r.code}/people`, 600000).catch(() => []);
+    const pl = (Array.isArray(ppl) ? ppl : ppl.data || []).filter(p => /player/i.test(p.typeName || '') || p.type === 'J' || p.type === 'P');
+    const coach = (Array.isArray(ppl) ? ppl : ppl.data || []).find(p => p.type === 'E');
+    if (pl.length) squad = `<div class="card"><h2>${t('squad')}</h2>${coach ? `<div class="inforow"><span class="k">${t('hb.coach')}</span><span class="v">${esc(euName(coach.person.alias || coach.person.name))}</span></div>` : ''}${pl.sort((a, b) => (+a.dorsal || 99) - (+b.dorsal || 99)).map(p => `<a class="pl" href="#/player/basketball/${esc(comp)}/${esc(p.person.code)}"><span class="no">${esc(p.dorsal || '')}</span><span class="nm">${esc(euName(p.person.alias || p.person.name))}</span><span class="ps">${esc(p.positionName || '')}</span></a>`).join('')}</div>`;
+  }
+  const empty = !tables && !gHtml && !squad ? `<div class="empty">${t('o.noTable')}</div>` : '';
+  return hero + tables + gHtml + squad + empty;
+}
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 async function viewGame(sport, id, day) {
   setTitle(t('nav.matches'));
@@ -242,7 +312,7 @@ async function viewGame(sport, id, day) {
   if (!it) return `<div class="empty">${t('noMatches')}</div>`;
   const tvTr = await tvList(trDay(it.time)).then(l => tvFor(l, it.time, it.home.name, it.away.name, '')).catch(() => '');
   const show = it.state !== 'pre';
-  const side = x => `<div class="side">${x.logo ? `<img class="logo big" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : '<span class="logo big ph"></span>'}<span>${x.pid ? `<a class="plink" href="#/player/tennis/${esc(x.tour)}/${esc(x.pid)}">${esc(x.name)}</a>` : esc(x.name)}</span></div>`;
+  const side = x => `<div class="side">${x.logo ? `<img class="logo big" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : '<span class="logo big ph"></span>'}<span>${x.pid ? `<a class="plink" href="#/player/tennis/${esc(x.tour)}/${esc(x.pid)}">${esc(x.name)}</a>` : !['eubasket', 'volley', 'handball'].includes(sport) ? esc(x.name) : `<a class="plink" href="#/tx/${esc(srcSport(sport))}/${encodeURIComponent(x.name)}">${esc(x.name)}</a>`}</span></div>`;
   const hero = `<div class="card hero"><div class="row">${side(it.home)}<div class="mid"><div class="sc">${show ? `${esc(it.home.score)} - ${esc(it.away.score)}` : esc(hm(it.time))}</div>
     <div class="st ${it.state}">${it.state === 'pre' ? dshort(it.time) : it.state === 'in' ? `<span class="livetag">${t('live')}</span> ${esc(it.text || '')}` : esc(it.text || t('st.FT'))}</div>${tvTr ? `<div class="tvtag">📺 ${esc(tvTr)}</div>` : ''}</div>${side(it.away)}</div></div>`;
   if (sport === 'handball' && String(id).startsWith('thf-')) return viewThfGame(it, id, grp, hero, tvTr);
@@ -251,7 +321,7 @@ async function viewGame(sport, id, day) {
   const row = (x, s) => `<tr><td class="t">${x.logo ? `<img class="logo" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'"> ` : ''}${esc(x.name)}</td>${Array.from({ length: n }, (_, k) => `<td>${esc(s[k] ?? '')}</td>`).join('')}<td class="p">${esc(x.score)}</td></tr>`;
   const perHtml = show && n ? `<div class="card"><table class="lines"><thead><tr><th></th>${Array.from({ length: n }, (_, k) => `<th>${k + 1}</th>`).join('')}<th>${t('total')}</th></tr></thead><tbody>${row(it.home, hs)}${row(it.away, as)}</tbody></table></div>`
     : `<div class="empty">${it.state === 'pre' ? t('notStarted') : t('noStats')}</div>`;
-  const rows = [['🏆', t('competition'), grp?.name], ['🔢', t('round'), it.round], ['📅', t('date'), new Date(it.time).toLocaleString(LOCALE(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }) + ' (TSİ)'], ['📺', t('tvTr'), tvTr]].filter(r => r[2]);
+  const rows = [['🏆', t('competition'), grp?.name], ['🔢', t('round'), it.round], ['📅', t('date'), new Date(it.time).toLocaleString(LOCALE(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }) + ' (TSİ)'], ['🏟️', t('venue'), it.venue], ['📺', t('tvTr'), tvTr || it.tv]].filter(r => r[2]);
   const infoHtml = `<div class="card">${rows.map(([ic, k, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>`;
   // EuroLeague / EuroCup: full box score with a profile for every player
   let boxHtml = '';
@@ -265,7 +335,7 @@ async function viewGame(sport, id, day) {
     };
     boxHtml = tbl(bs?.local, it.home.name) + tbl(bs?.road, it.away.name);
   }
-  const T = [[t('score'), perHtml], ...(boxHtml ? [[t('search.players'), boxHtml]] : []), [t('info'), infoHtml], [t('c.chat'), chatHtml(`m-${String(sport).replace(/\W/g, '')}-${String(id).replace(/\W/g, '')}`)]];
+  const T = [[t('score'), perHtml], ...(boxHtml ? [[t('search.players'), boxHtml]] : []), [t('info'), infoHtml + calBtn(`${it.home.name} – ${it.away.name}`, it.time, [it.venue, grp?.name].filter(Boolean).join(', '))], [t('c.chat'), chatHtml(`m-${String(sport).replace(/\W/g, '')}-${String(id).replace(/\W/g, '')}`)]];
   return hero + tabsHtml('match', T, it.state === 'pre', [T.length - 2, T.length - 1]);
 }
 // Turkish handball (THF): line-up, goals, 2-minute suspensions and the timeline from the federation's live ticker
@@ -284,7 +354,7 @@ async function viewThfGame(it, id, grp, hero, tvTr) {
   const plHtml = side(m.home) + side(m.away) || `<div class="empty">${t('noStats')}</div>`;
   const rows = [['🏆', t('competition'), m.league || grp?.name], ['🔢', t('round'), it.round], ['📅', t('date'), new Date(it.time).toLocaleString(LOCALE(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }) + ' (TSİ)'], ['🏟️', t('venue'), m.hall], ['📺', t('tvTr'), tvTr]].filter(r => r[2]);
   const infoHtml = `<div class="card">${rows.map(([ic, k, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>`;
-  const T = [[t('score'), score], [t('events'), evs], [t('search.players'), plHtml], [t('info'), infoHtml], [t('c.chat'), chatHtml('m-handball-' + String(id).replace(/\W/g, ''))]];
+  const T = [[t('score'), score], [t('events'), evs], [t('search.players'), plHtml], [t('info'), infoHtml + calBtn(`${it.home.name} – ${it.away.name}`, it.time, m.hall || grp?.name)], [t('c.chat'), chatHtml('m-handball-' + String(id).replace(/\W/g, ''))]];
   return hero + tabsHtml('match', T, it.state === 'pre', [3, 4]);
 }
 async function viewThfPlayer(id) {
@@ -317,7 +387,7 @@ async function viewEuPlayer(comp, code) {
 async function otherSportHtml(sport, day, extra = false) {
   const d = await capi('GET', `/sports/${sport}?date=${day}`);
   if (d.error) throw new Error(d.error);
-  const cards = (d.groups || []).filter(g => groupOk(sport, g)).map(g => `<div class="card"><h2>${esc(g.name)}</h2>${g.items.map(it => otherRow(it, sport, day)).join('')}</div>`).join('');
+  const cards = (d.groups || []).filter(g => groupOk(sport, g)).map(g => `<div class="card"><h2>${esc(g.name)}${g.src ? `<a href="#/ostand/${encodeURIComponent(g.src)}">📊 ${t('o.standings')}</a>` : ''}</h2>${g.items.map(it => otherRow(it, sport, day)).join('')}</div>`).join('');
   const limit = d.limit ? `<p class="note">⏳ ${t('c.limitNote')}</p>` : '';
   const note = limit + (d.needKey ? `<p class="note">📌 ${t(cards ? 'c.needKeyNote' : 'c.needKey')}</p>` : '');
   if (!cards && !note && /Free plans do not have access/i.test(d.errors?.[0] || '')) return extra ? '' : `<div class="empty">${t('apiWindow')}</div>`;
@@ -527,7 +597,7 @@ async function viewMatch(league, id) {
   const threadHtml = await matchThreadCard(mkey, h, a).catch(() => '');
   if (threadHtml) html = html.replace('<!--tv-->', '<!--tv-->') + threadHtml;
   const [mvHtml, prHtml] = await Promise.all([motmHtml(mkey, rosters, s).catch(() => ''), predictHtml(mkey, comp, s, h, a).catch(() => '')]);
-  const T = { ev: [t('events'), evHtml], st: [t('stats'), stHtml], lu: [t('lineups'), luHtml], rc: [t('recent'), recentHtml(j, [h, a])], inf: [t('info'), infoHtml],
+  const T = { ev: [t('events'), evHtml], st: [t('stats'), stHtml], lu: [t('lineups'), luHtml], rc: [t('recent'), recentHtml(j, [h, a])], inf: [t('info'), infoHtml + calBtn(`${h.team.displayName} – ${a.team.displayName}`, comp.date, [gi.venue?.fullName, lname(leagueOf(league))].filter(Boolean).join(', '))],
     ch: [t('c.chat'), chatHtml('m-soccer-' + id)], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml] };
   const order = s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'lu', 'rc', 'pr', 'ch', 'ev', 'st', 'mv'] : ['ev', 'st', 'lu', 'rc', 'inf', 'ch', 'mv', 'pr'];
   html += seg(k, order.map(x => T[x][0])) + order.map((x, i) => pane(k, i, T[x][1])).join('');
@@ -600,7 +670,7 @@ async function viewUsMatch(league, id) {
   ].filter(r => r[2]);
   const infoHtml = `<div class="card">${info.map(([ic, k, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>`;
 
-  return html + tabsHtml('match', [[t('score'), periodHtml], [t('stats'), stHtml], [t('search.players'), plHtml], [t('leaders'), ldHtml], [t('info'), infoHtml], [t('c.chat'), chatHtml(`m-${sportOf(league)}-${id}`)]], s.cls === 'pre' || s.cls === 'ppd', [4, 5]);
+  return html + tabsHtml('match', [[t('score'), periodHtml], [t('stats'), stHtml], [t('search.players'), plHtml], [t('leaders'), ldHtml], [t('info'), infoHtml + calBtn(`${h.team.displayName} – ${a.team.displayName}`, comp.date, gi.venue?.fullName)], [t('c.chat'), chatHtml(`m-${sportOf(league)}-${id}`)]], s.cls === 'pre' || s.cls === 'ppd', [4, 5]);
 }
 
 // last five games of both teams + earlier meetings, from the match summary
@@ -1110,8 +1180,11 @@ async function viewFavs() {
   const other = OTHER_SPORTS.includes(curSport);
   const mineF = other ? [] : favs.filter(f => sportOf(f.league) === curSport);
   const mineP = pfavs.filter(f => tabOfSport(f.sport) === curSport);
-  const html = (mineF.length ? await favCards(mineF) : '') + (mineP.length ? await favPlayers(mineP) : '');
-  return sportBar() + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`);
+  const mineX = xfavs.filter(f => f.sport === curSport);
+  const xHtml = mineX.length ? `<div class="card"><h2>${t('o.teams')}</h2>${mineX.map(f => `<div class="clubrow"><a class="nm" href="#/tx/${esc(f.sport)}/${encodeURIComponent(f.name)}">${esc(f.name)}</a><span class="go">›</span></div>`).join('')}</div>` : '';
+  const html = (mineF.length ? await favCards(mineF) : '') + xHtml + (mineP.length ? await favPlayers(mineP) : '');
+  const calAll = favs.length || xfavs.length ? `<div class="form-block"><button class="btn ghost" data-ics-all>📅 ${t('o.calAll')}</button></div>` : '';
+  return sportBar() + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`) + calAll;
 }
 async function favCards(list) {
   const all = await Promise.all(list.map(f => teamEvents(f.id, f.league).then(e => ({ f, e })).catch(() => ({ f, e: { past: [], live: [], next: [] } }))));
@@ -1467,7 +1540,7 @@ async function viewTffMatch(id, lg = 'tur.cup') {
     ...(m.referees || []).map(r => ['🧑‍⚖️', t('role.' + r.role), tffName(r.name)]),
   ].filter(r => r[2]);
   const infoHtml = `<div class="card">${info.map(([ic, k, v]) => `<div class="inforow"><span class="ic">${ic}</span><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>`;
-  return html + tabsHtml('match', [[t('events'), evHtml], [t('info'), infoHtml], [t('c.chat'), chatHtml('m-tff-' + id)]], !played, [1, 2]);
+  return html + tabsHtml('match', [[t('events'), evHtml], [t('info'), infoHtml + calBtn(`${tffName(m.home)} – ${tffName(m.away)}`, m.iso, tffName(m.stadium))], [t('c.chat'), chatHtml('m-tff-' + id)]], !played, [1, 2]);
 }
 
 // beIN SPORTS 1–4 listings matched to a game by kick-off time (±20 min) and both team names
@@ -1506,16 +1579,16 @@ function tvFor(items, iso, home, away, league) {
 }
 
 // ---- Notifications (Cloudflare Worker + ntfy) ----
-const NPREFS = ['goal', 'red', 'var', 'start', 'ht', 'end'];
+const NPREFS = ['goal', 'red', 'var', 'remind', 'start', 'ht', 'end'];
 let notif = store.get('notify', null);
 if (!notif) {
   const rnd = [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 12);
-  notif = { url: '', key: '', topic: 'grafondex-' + rnd, prefs: { goal: true, red: true, var: true, start: true, ht: false, end: true } };
+  notif = { url: '', key: '', topic: 'grafondex-' + rnd, prefs: { goal: true, red: true, var: true, remind: true, start: true, ht: false, end: true } };
   store.set('notify', notif);
 }
 const b64uBytes = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 async function callWorker(path, extra = {}) {
-  const r = await fetch(notif.url.replace(/\/$/, '') + path, {
+  const r = await fetch(workerBase() + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: notif.key, ...extra }),
   });
@@ -1525,7 +1598,7 @@ async function callWorker(path, extra = {}) {
 }
 const syncNotify = () => callWorker('/sync', {
   // the notification server follows football only
-  topic: notif.topic, prefs: notif.prefs, lang: LANG, teams: favs.filter(f => sportOf(f.league) === 'soccer').map(f => ({ id: f.id, name: f.name })),
+  topic: notif.topic, prefs: notif.prefs, lang: LANG, teams: [...favs.map(f => ({ id: f.id, name: f.name, sport: sportOf(f.league) })), ...xfavs.map(f => ({ id: f.name, name: f.name, sport: f.sport }))],
   players: pfavs.filter(f => f.sport === 'soccer').map(f => ({ id: f.id, name: f.name })),
   app: location.href.split('#')[0], push: notif.push || null,
 });
@@ -1600,7 +1673,13 @@ function authForm() {
     <label>${t('c.username')}<input id="a-user" autocomplete="username" autocapitalize="off" maxlength="20"></label>
     <label>${t('c.password')}<input id="a-pass" type="password" autocomplete="current-password" maxlength="100"></label>
     <div class="authbtns"><button class="btn" data-auth="login">${t('c.login')}</button><button class="btn ghost" data-auth="register">${t('c.register')}</button></div>
-    <div class="hint" id="a-msg">${t('c.passHint')}</div></div></div>`;
+    <div class="hint" id="a-msg">${t('c.passHint')}</div></div></div>
+    <div class="card"><h2>${t('c.forgot')}</h2><div class="form-block">
+      <div class="hint">${t('c.forgotHint')}</div>
+      <input id="r-user" autocapitalize="off" maxlength="20" placeholder="${esc(t('c.username'))}">
+      <input id="r-code" autocapitalize="characters" maxlength="12" placeholder="${esc(t('c.recCode'))}">
+      <input id="r-pass" type="password" autocomplete="new-password" maxlength="100" placeholder="${esc(t('c.newPass'))}">
+      <button class="btn" data-recover>${t('c.recover')}</button><div class="hint" id="r-msg"></div></div></div>`;
 }
 function modCard() {
   return `<div class="card"><h2>🛡️ ${t('c.mod')}</h2><div class="form-block">
@@ -1624,7 +1703,7 @@ async function loadReports() {
   try {
     const { reports } = await capi('GET', '/mod/reports');
     box.innerHTML = reports.length ? `<h2 style="border-top:1px solid var(--line)">🚩 ${t('c.reports')}</h2>` + reports.map(r =>
-      `<div class="lrow"><span class="nm" style="padding:10px 12px">${esc(r.kind)} #${r.target_id} × ${r.n}</span><button class="pin" data-mod="delitem" data-kind="${esc(r.kind)}" data-id="${r.target_id}" aria-label="${t('c.delete')}">🗑</button></div>`).join('') : '';
+      `<div class="lrow" style="align-items:flex-start"><span class="nm" style="padding:10px 12px;white-space:normal"><b>${esc(r.author || '?')}</b> · ${esc(r.kind)} #${r.target_id} × ${r.n}<br><small class="sub">${esc(String(r.preview || '').slice(0, 160))}${r.reasons ? '<br>🚩 ' + esc(r.reasons) : ''}</small></span><button class="pin" data-rdismiss data-kind="${esc(r.kind)}" data-id="${r.target_id}" aria-label="OK">✓</button><button class="pin" data-mod="delitem" data-kind="${esc(r.kind)}" data-id="${r.target_id}" aria-label="${t('c.delete')}">🗑</button></div>`).join('') : '';
   } catch {}
 }
 
@@ -1650,6 +1729,7 @@ async function viewProfile() {
       <input id="pw-old" type="password" autocomplete="current-password" placeholder="${t('c.oldPass')}">
       <input id="pw-new" type="password" autocomplete="new-password" placeholder="${t('c.newPass')}">
       <button class="btn" data-pw-change>${t('c.changePass')}</button><div class="hint" id="pw-msg"></div>
+      <button class="btn ghost" data-rec-new>${t('c.recNew')}</button><div class="hint" id="rec-msg">${t('c.recHint')}</div>
       <button class="btn ghost danger" data-acct-delete>${t('c.deleteAcct')}</button></div></div>
     <div class="card"><div class="form-block"><button class="btn ghost" data-auth="logout">${t('c.logout')}</button></div></div>`;
 }
@@ -1725,7 +1805,7 @@ document.addEventListener('click', async e => {
       const { id, name, league } = pt.dataset;
       r = await capi('POST', '/profile', { fav: { id, name, league } });
       // the profile team is also a favourite: it shows in Favourites and gets goal notifications
-      if (!isFav(id, league)) { favs = [...favs, { id, name, league }]; store.set('favs', favs); if (notif.url && notif.key) syncNotify().catch(() => {}); }
+      if (!isFav(id, league)) { favs = [...favs, { id, name, league }]; store.set('favs', favs); if ((notif.key || notif.push)) syncNotify().catch(() => {}); }
     }
     acct.user = r.user; store.set('acct', acct);
     if (!ps) render(true);
@@ -2008,6 +2088,21 @@ document.addEventListener('click', async e => {
     return;
   }
 
+  if (e.target.closest('[data-recover]')) {
+    const msg = document.getElementById('r-msg');
+    try {
+      const r = await capi('POST', '/recover', { username: document.getElementById('r-user').value.trim(), code: document.getElementById('r-code').value, password: document.getElementById('r-pass').value });
+      acct = { token: r.token, user: r.user }; store.set('acct', acct); render();
+    } catch (err) { msg.textContent = '❌ ' + errText(err); }
+    return;
+  }
+  if (e.target.closest('[data-rec-new]')) {
+    const msg = document.getElementById('rec-msg');
+    try { const r = await capi('POST', '/recovery'); msg.innerHTML = `<b style="font-size:20px;letter-spacing:2px;user-select:all">${esc(r.code)}</b><br>${t('c.recSaved')}`; } catch (err) { msg.textContent = '❌ ' + errText(err); }
+    return;
+  }
+  const rd = e.target.closest('[data-rdismiss]');
+  if (rd) { try { await capi('POST', '/mod/dismiss', { kind: rd.dataset.kind, id: +rd.dataset.id, restore: true }); loadReports(); } catch {} return; }
   const ps = e.target.closest('[data-post-send]');
   if (ps) {
     const msg = document.getElementById('p-msg');
@@ -2065,7 +2160,7 @@ document.addEventListener('click', async e => {
 // ---- router ----
 const routes = {
   matches: viewMatches, match: viewMatch, team: viewTeam, favs: viewFavs, settings: viewSettings,
-  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, profile: viewProfile, user: viewUser,
+  leagues: viewLeagues, league: viewLeague, tff: viewTffMatch, game: viewGame, ostand: viewOtherTable, tx: viewTeamX, forum: viewForum, post: viewPost, player: viewPlayer, search: viewSearch, leaderboard: viewLeaderboard, notifs: viewNotifs, compare: viewCompare, profile: viewProfile, user: viewUser,
   table: l => viewLeague(l || store.get('tableLeague', 'tur.1'), 'puan'),
 };
 // texts that live in the page shell (bottom bar, header buttons)
@@ -2227,7 +2322,7 @@ document.addEventListener('click', async e => {
     LANG = lb.dataset.lang;
     store.set('lang', LANG);
     applyStatic();
-    if (notif.url && notif.key) syncNotify().catch(() => {});
+    if ((notif.key || notif.push)) syncNotify().catch(() => {});
     render(true);
     return;
   }
@@ -2243,7 +2338,7 @@ document.addEventListener('click', async e => {
     const msg = $('#n-msg');
     notif.url = $('#n-url').value.trim();
     notif.key = $('#n-key').value.trim();
-    if (!/^https:\/\//.test(notif.url) || !notif.key) { msg.textContent = t('needUrlKey'); return; }
+    if (!/^https:\/\//.test(workerBase())) { msg.textContent = t('needUrlKey'); return; }
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error(t('pushUnsupported'));
       if (await Notification.requestPermission() !== 'granted') throw new Error(t('pushDenied'));
@@ -2264,12 +2359,12 @@ document.addEventListener('click', async e => {
     notif.topic = $('#n-topic').value.trim();
     NPREFS.forEach(k => { notif.prefs[k] = document.querySelector(`[data-nprefs="${k}"]`).checked; });
     store.set('notify', notif);
-    if (!/^https:\/\//.test(notif.url) || !notif.key) { msg.textContent = t('needUrlKey'); return; }
+    if (!/^https:\/\//.test(workerBase()) || (!notif.key && !notif.push)) { msg.textContent = t('needUrlKey'); return; }
     if (!/^[\w-]{6,64}$/.test(notif.topic)) { msg.textContent = t('badTopic'); return; }
     msg.textContent = t('sending');
     try {
       const r = await syncNotify();
-      await callWorker('/test');
+      await callWorker('/test', { push: notif.push || null, lang: LANG, app: location.href.split('#')[0] });
       msg.textContent = t('saved', r.teams);
     } catch (err) { msg.textContent = '❌ ' + err.message; }
     return;
@@ -2288,12 +2383,40 @@ document.addEventListener('click', async e => {
     const d = pf.dataset, was = isPFav(d.pfav, d.psport);
     pfavs = was ? pfavs.filter(f => !(f.id == d.pfav && f.sport === d.psport)) : [...pfavs, { id: d.pfav, name: d.name, sport: d.psport, league: d.league, team: d.team }];
     store.set('pfavs', pfavs);
-    if (notif.url && notif.key) syncNotify().catch(() => {});
+    if ((notif.key || notif.push)) syncNotify().catch(() => {});
     document.querySelectorAll(`[data-pfav="${CSS.escape(d.pfav)}"][data-psport="${CSS.escape(d.psport)}"]`).forEach(b => {
       b.classList.toggle('on', !was);
       b.textContent = b.classList.contains('favbtn') ? (was ? t('pl.addFav') : t('pl.inFav')) : (was ? '☆' : '★');
     });
     if (location.hash.startsWith('#/favs')) render(true);
+    return;
+  }
+  const ic1 = e.target.closest('[data-ics]');
+  if (ic1) { icsSave([{ t: ic1.dataset.icsT, s: ic1.dataset.icsS, w: ic1.dataset.icsW, d: +ic1.dataset.icsD }], 'match'); return; }
+  if (e.target.closest('[data-ics-all]')) {
+    const btn = e.target.closest('[data-ics-all]'); btn.disabled = true;
+    const out = [];
+    await Promise.all(favs.map(async f => {
+      const ev = await teamEvents(f.id, f.league).catch(() => null);
+      for (const x of [...(ev?.live || []), ...(ev?.next || [])].slice(0, 12)) out.push({ t: x.name || x.shortName || f.name, s: x.date, w: x.competitions?.[0]?.venue?.fullName || '' });
+    }));
+    await Promise.all(xfavs.map(async f => {
+      const c = await get(`${workerBase()}/tcomps?sport=${encodeURIComponent(f.sport)}&name=${encodeURIComponent(f.name)}`, 300000).catch(() => null);
+      for (const g of (c?.games || []).filter(g => g.state !== 'post')) out.push({ t: `${g.home} – ${g.away}`, s: g.time, w: g.comp });
+    }));
+    btn.disabled = false;
+    const uniq = [...new Map(out.map(x => [x.s + x.t, x])).values()].sort((a, b) => a.s.localeCompare(b.s));
+    if (uniq.length) icsSave(uniq, 'grafondex-favoriler'); else btn.textContent = t('o.calNone');
+    return;
+  }
+  const xb = e.target.closest('[data-xfav]');
+  if (xb) {
+    e.preventDefault();
+    const [sp, ...rest] = xb.dataset.xfav.split('|'), nm = rest.join('|');
+    xfavs = xfavs.some(f => f.sport === sp && f.name === nm) ? xfavs.filter(f => !(f.sport === sp && f.name === nm)) : [...xfavs, { sport: sp, name: nm }];
+    store.set('xfavs', xfavs);
+    if (notif.key || notif.push) syncNotify().catch(() => {});
+    render(true);
     return;
   }
   const fb = e.target.closest('[data-fav]');
@@ -2302,7 +2425,7 @@ document.addEventListener('click', async e => {
     const id = fb.dataset.fav;
     favs = isFav(id, fb.dataset.league) ? favs.filter(f => !(f.id == id && sportOf(f.league) === sportOf(fb.dataset.league))) : [...favs, { id, name: fb.dataset.name, league: fb.dataset.league }];
     store.set('favs', favs);
-    if (notif.url && notif.key) syncNotify().catch(() => {});
+    if ((notif.key || notif.push)) syncNotify().catch(() => {});
     render(true);
   }
 });
