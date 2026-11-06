@@ -1103,6 +1103,12 @@ html[data-theme] .card>.hint,html[data-theme] .form-block>.hint{font-size:12.5px
 @keyframes lbin{from{opacity:0;transform:translate(-50%,10px)}}
 @keyframes lbgol{0%,100%{background:color-mix(in srgb,var(--card) 92%,transparent)}40%{background:#16a34a;color:#fff}}
 body.haslbar main{padding-bottom:calc(132px + env(safe-area-inset-bottom))}
+.tchead{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;font-weight:700;font-size:14px;border-bottom:1px solid var(--line)}.tchead span{display:flex;align-items:center;gap:8px;min-width:0}
+.tcrow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:9px 14px}.tcrow+.tcrow{border-top:1px solid var(--line)}
+.tcrow>span{font-size:12px;color:var(--muted);text-align:center;white-space:nowrap}.tcrow>b{font-size:14px}.tcrow>b:last-child{text-align:right;display:flex;justify-content:flex-end}
+.nteam{display:flex;align-items:center;gap:10px;padding:9px 14px}.nteam+.nteam{border-top:1px solid var(--line)}.nteam .nl{flex:1;min-width:0;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nseg{display:flex;background:var(--card2);border-radius:10px;padding:2px;flex:none}.nseg button{border:0;background:none;color:var(--muted);font-size:12px;font-weight:600;padding:6px 9px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.nseg button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .admq{margin:12px;display:flex;align-items:center;gap:8px;background:var(--card2);border-radius:12px;padding:0 12px}.admq input{flex:1;border:0;background:none;padding:11px 0;color:var(--text);font-size:15px;outline:none}
 .arow{padding:12px 14px;display:flex;flex-direction:column;gap:8px}.arow+.arow{border-top:1px solid var(--line)}
 .atop{display:flex;align-items:center;gap:10px;min-width:0}.atop .anm{font-weight:700;color:var(--text);text-decoration:none;overflow:hidden;text-overflow:ellipsis}.atop small{margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap}
@@ -1154,7 +1160,7 @@ html[data-tone="blue"] .sk{background:linear-gradient(90deg,#14306a 25%,#1d3c7c 
   <a href="#/profile" data-tab="profile"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></i><span>Profil</span></a>
   <a href="#/settings" data-tab="settings"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></i><span>Ayarlar</span></a>
 </nav>
-<script>(function(){var L=["tr","en","de","ru","ku","fr","es","pl"],s;try{s=JSON.parse(localStorage.getItem('lang'))}catch(e){}if(L.indexOf(s)<0){s=(navigator.language||'tr').slice(0,2).toLowerCase();if(L.indexOf(s)<0)s='tr'}document.write('<script src="i18n-'+s+'.js?v=82"><\/script>')})()</script>
-<script src="app.js?v=82"></script>
+<script>(function(){var L=["tr","en","de","ru","ku","fr","es","pl"],s;try{s=JSON.parse(localStorage.getItem('lang'))}catch(e){}if(L.indexOf(s)<0){s=(navigator.language||'tr').slice(0,2).toLowerCase();if(L.indexOf(s)<0)s='tr'}document.write('<script src="i18n-'+s+'.js?v=83"><\/script>')})()</script>
+<script src="app.js?v=83"></script>
 </body>
 </html>
