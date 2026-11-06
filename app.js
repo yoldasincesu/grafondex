@@ -295,7 +295,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
@@ -647,7 +647,7 @@ async function viewGame(sport, id, day) {
   setTitle(t('nav.matches'));
   let it = null, grp = null;
   try { const d = await capi('GET', `/sports/${sport}?date=${day}`); for (const g of d.groups || []) { const f = (g.items || []).find(x => String(x.id) === String(id)); if (f) { it = f; grp = g; break; } } } catch (e) { return retryBox(e); }
-  if (!it) return `<div class="empty">${t('noMatches')}</div>`;
+  if (!it) return emptyState('ball', t('noMatches'));
   const tvTr = await tvList(trDay(it.time)).then(l => tvFor(l, it.time, it.home.name, it.away.name, '')).catch(() => '');
   const show = it.state !== 'pre';
   const side = x => `<div class="side">${x.logo ? `<img class="logo big" src="${esc(x.logo)}" alt="" onerror="this.style.visibility='hidden'">` : phLogo(x.name, sport, 'big')}<span>${x.pid ? `<a class="plink" href="#/player/tennis/${esc(x.tour)}/${esc(x.pid)}">${esc(x.name)}</a>` : !['eubasket', 'volley', 'handball'].includes(sport) ? esc(x.name) : `<a class="plink" href="#/tx/${esc(srcSport(sport))}/${encodeURIComponent(x.name)}">${esc(x.name)}</a>`}</span></div>`;
@@ -841,7 +841,7 @@ async function viewMatches(dateStr) {
     html += `<div class="card">${head(L)}${evs.map(e => matchRow(e, L.id, false, tvOf(e, L.id))).join('')}</div>`;
   }
   const extra = curSport === 'basketball' ? await otherSportHtml('eubasket', isoDay(d), true).catch(() => '') : '';
-  if (!seen.size && !Object.values(tffToday).some(x => x.length) && !extra.includes('class="card"')) html += `<div class="empty">${t('noMatchesDay')}<br><br><a href="#/settings" style="color:var(--accent)">${t('pickLeagues')}</a></div>`;
+  if (!seen.size && !Object.values(tffToday).some(x => x.length) && !extra.includes('class="card"')) html += emptyState('cal', t('noMatchesDay'), `<a class="btn" href="#/matches/${ymd(new Date(d.getTime() + 864e5))}">${t('es.nextDay')} ›</a><a class="btn ghost" href="#/settings/icerik">${t('pickLeagues')}</a>`);
   return html + extra;
 }
 
@@ -1086,7 +1086,8 @@ async function viewMatch(league, id) {
   const rk = await leagueRanks(league).catch(() => new Map());
   const rankChip = c => { const r = rk.get(String(c.team.id)); return r ? `<a class="rkchip" href="#/league/${esc(league)}/puan">${t('o.rank', r.rank)}</a>` : ''; };
   const sideHtml = c => `<div class="side"><a href="#/team/${league}/${c.team.id}">${img(c.team.id, 'big', league)}<span>${esc(c.team.displayName)}</span></a>${rankChip(c)}${formHtml(c.form)}${favStar(c.team.id, c.team.displayName, league)}</div>`;
-  let html = `<div class="card hero"><div class="row">${sideHtml(h)}
+  const hc = fxCol(h.team.color, '#2563eb'), ac = fxCol(a.team.color && a.team.color !== h.team.color ? a.team.color : a.team.alternateColor, '#e5484d');
+  let html = `<div class="card hero tchero ${s.cls === 'live' ? 'islive' : ''}" style="--hc:${hc};--ac:${ac}"><div class="row">${sideHtml(h)}
     <div class="mid"><div class="sc">${s.show ? `${esc(scoreOf(h))} - ${esc(scoreOf(a))}` : s.cls === 'ppd' ? '– : –' : esc(hm(comp.date))}</div>
     <div class="st ${s.cls}">${s.cls === 'pre' ? dshort(comp.date) : s.cls === 'live' ? `<span class="livetag">${t('live')}</span> ${liveHtml(s)}` : esc(s.txt)}</div><!--tv--></div>
     ${sideHtml(a)}</div><div class="heroact"><a class="cbtn txt" href="#/live/${esc(league)}/${esc(id)}">📺 ${t('ss.btn')}</a>${s.cls === 'post' ? `<a class="cbtn txt" href="${esc(hlUrl(h, a, comp.date, j))}" target="_blank" rel="noopener">🎬 ${t('hl.btn')}</a>` : ''}${s.cls === 'live' || s.cls === 'post' ? `<button class="cbtn txt" data-share-card="${esc(league)}|${esc(id)}">📤 ${t('sc.btn')}</button>` : ''}<!--chjump--></div></div>`;
@@ -1131,11 +1132,12 @@ async function viewMatch(league, id) {
     const hv = statOf(h.team.id, n), av = statOf(a.team.id, n);
     if (hv == null && av == null) return '';
     const hn = parseFloat(hv) || 0, an = parseFloat(av) || 0, tot = hn + an || 1;
-    return `<div class="stat"><div class="l"><b>${esc(hv ?? '-')}${suf}</b><span>${t('stat.' + label)}</span><b>${esc(av ?? '-')}${suf}</b></div>
-      <div class="bars"><i class="h" style="width:${hn / tot * 100}%"></i><i class="a" style="width:${an / tot * 100}%"></i></div></div>`;
+    const lead = hn > an ? 'h' : an > hn ? 'a' : '';
+    return `<div class="stat st2 ${lead ? 'lead-' + lead : ''}"><div class="l"><b>${esc(hv ?? '-')}${suf}</b><span>${t('stat.' + label)}</span><b>${esc(av ?? '-')}${suf}</b></div>
+      <div class="bars2"><span class="h"><i style="width:${hn / tot * 100}%"></i></span><span class="a"><i style="width:${an / tot * 100}%"></i></span></div></div>`;
   }).join('');
   const momHtml = s.cls !== 'pre' && s.cls !== 'ppd' ? momentumHtml(j, h, a) : '';
-  const stHtml = momHtml + (stRows && s.cls !== 'pre' ? `<div class="card">${stRows}</div>` : momHtml ? '' : `<div class="empty">${t('noStats')}</div>`);
+  const stHtml = momHtml + (stRows && s.cls !== 'pre' ? `<div class="card stcard" style="--hc:${hc};--ac:${ac}">${stRows}</div>` : momHtml ? '' : `<div class="empty">${t('noStats')}</div>`);
 
   // lineups
   const rosters = (j.rosters || []).filter(r => r.roster?.length);
@@ -1729,9 +1731,13 @@ async function viewTeam(league, id, season) {
     return a > b ? 'W' : a < b ? 'L' : 'D';
   }).join('') : '';
   const rec = '';
-  let html = `<div class="card hero">${img(id, 'big', league)}<div style="font-size:20px;font-weight:700;margin-top:8px">${esc(name)}</div>
+  const tcol = fxCol(roster?.team?.color || evTeam?.color || entry?.team?.color, '#2563eb');
+  const sv = n => stat(n)?.displayValue ?? stat(n)?.value;
+  const tile = (v, l) => v != null && v !== '' ? `<div class="ttile"><b>${esc(v)}</b><small>${l}</small></div>` : '';
+  const tiles = entry && sportOf(league) === 'soccer' ? `<div class="ttiles">${tile(rank, t('tc.rank'))}${tile(sv('points'), t('tc.pts'))}${tile(sv('gamesPlayed'), t('tc.played'))}${tile([sv('wins'), sv('ties'), sv('losses')].every(x => x != null) ? `${sv('wins')}-${sv('ties')}-${sv('losses')}` : '', t('tc.wdl'))}</div>` : '';
+  let html = `<div class="card hero tcover" style="--tc:${tcol}"><div class="tcbadge">${img(id, 'big', league)}</div><div class="tcname">${esc(name)}</div>
     <div class="st">${lazy(sumP.then(esc), 'span')}${formStr ? `<div class="form big">${[...formStr].map(c => `<i class="${c}">${t('res.' + c)}</i>`).join('')}</div>` : ''}${rec ? ' · ' + esc(rec) + (sportOf(league) === 'soccer' ? ' ' + t('wdl') : '') : ''}</div>
-    <button class="favbtn ${fav ? 'on' : ''}" data-fav="${id}" data-name="${esc(name)}" data-league="${league}">${fav ? t('inFavs') : t('addFav')}</button></div>`;
+    ${tiles}<button class="favbtn ${fav ? 'on' : ''}" data-fav="${id}" data-name="${esc(name)}" data-league="${league}">${fav ? t('inFavs') : t('addFav')}</button></div>`;
 
   const rows = (list, withDate) => list.map(e => matchRow(e, leagueOfEvent(e, league), withDate)).join('');
   const seasonBar = sportOf(league) === 'soccer' ? `<div class="seasonbar">${seasonSelect(`data-team-season="${league}/${id}"`, season)}</div>` : '';
@@ -1740,7 +1746,7 @@ async function viewTeam(league, id, season) {
   const fxBody = (evs.live.length ? `<div class="card"><h2>${t('live')}</h2>${rows(evs.live, true)}</div>` : '')
     + (!pastSeason ? sec(t('upcoming'), fixtureGroups(nextSorted, league, 40)) : '')
     + sec(pastSeason ? t('season', seasonLabel(season)) + ' · ' + evs.past.length : t('recentMatches'), fixtureGroups(evs.past, league, pastSeason ? 150 : 30))
-    || `<div class="empty">${t('noMatches')}</div>`;
+    || emptyState('ball', t('noMatches'));
   const fx = seasonBar + fxBody;
 
   if (sportOf(league) !== 'soccer') return html + seg('team', [t('fixtures'), t('squad'), t('news.tab'), t('cat.teamForum')]) + pane('team', 0, fx) + pane('team', 1, usRosterHtml(roster, league)) + pane('team', 2, lazy(newsP.then(n => newsCard(n, t('news.title'))))) + pane('team', 3, await teamForumHtml(league, id));
@@ -4224,6 +4230,8 @@ if ('serviceWorker' in navigator) {
   setTimeout(() => sessionStorage.removeItem('gx-reloaded'), 20000);
 }
 
+// ---- empty pages: a soft icon tile, one sentence and (when there is one) the next step
+const emptyState = (icon, text, actions = '') => `<div class="empty es"><span class="esic">${svgI(icon)}</span><div class="estx">${text}</div>${actions ? `<div class="esact">${actions}</div>` : ''}</div>`;
 // ---- UI icons: the emoji in headings, tabs, buttons and info rows are swapped for one consistent set of line icons
 // (Lucide-style, 24×24, stroke = currentColor). Emoji inside user text (posts, chat, names) are never touched.
 const ICP = {
@@ -4319,7 +4327,8 @@ function iconize(root = document) {
     if (!n) continue;
     const m = n.textContent.match(EMO_RE); if (!m) continue;
     const key = EMO[m[1]] || EMO[m[1].replace(/️/g, '')] || EMO[[...m[1]][0]];
-    if (key === 'star' || key === 'dot') continue; // favourite stars and the live dot keep their own look
+    if (key === 'star') continue; // favourite stars keep their own look
+    if (key === 'dot') { n.textContent = n.textContent.slice(m[0].length); n.parentNode.insertBefore(Object.assign(document.createElement('i'), { className: 'ui-dot' }), n); continue; } // 🔴 → a pulsing live dot
     let rest = n.textContent.slice(m[0].length), m2; while ((m2 = rest.match(EMO_RE))) rest = rest.slice(m2[0].length); // "🌐 🌐 Dil" → one icon
     n.textContent = rest;
     if (key) n.parentNode.insertBefore(document.createRange().createContextualFragment(svgI(key)), n);
