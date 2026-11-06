@@ -2850,31 +2850,57 @@ const nameHtml = m => `<a class="cu ${m.role === 'admin' ? 'adm' : ''}" href="#/
 // is e-mail sign-up switched on in the Worker? (asked once a session; until it answers, the form works the old way)
 let mailCfg = null;
 const mailOnP = () => mailCfg ??= capi('GET', '/mailcfg').then(r => !!r.on).catch(() => false);
-let authMode = 'login';
+// ---- sign in / sign up / forgot password: one card with three tabs. What the user typed and the step they are on
+// (waiting for the e-mail code) survive switching to the mail app and back, and a page reload (15 min, password kept in memory only)
+let mailOnV = null;
+const authDraft = (() => { try { const d = JSON.parse(sessionStorage.getItem('authDraft') || '{}'); return Date.now() - (d.at || 0) < 15 * 60e3 ? d : {}; } catch { return {}; } })();
+let authPass = '';
+const saveDraft = () => { authDraft.at = Date.now(); try { sessionStorage.setItem('authDraft', JSON.stringify(authDraft)); } catch {} };
+const clearDraft = () => { for (const k of Object.keys(authDraft)) delete authDraft[k]; authPass = ''; try { sessionStorage.removeItem('authDraft'); } catch {} };
+let authMode = authDraft.mode || 'login';
+const redrawAuth = () => { const c = document.querySelector('.authcard'); if (c) c.outerHTML = authForm(); };
 function authForm() {
-  mailOnP().then(on => { document.querySelectorAll('[data-mailonly]').forEach(el => { el.hidden = !on || (el.dataset.mailonly === 'reg' && authMode !== 'register'); }); });
-  // two modes: log in (user name OR e-mail + password) and sign up (user name, e-mail, password, then the code from the e-mail)
-  const reg = authMode === 'register';
-  return `<div class="card authcard"><div class="chips authtabs"><button class="${reg ? '' : 'on'}" data-authmode="login">🔑 ${t('c.login')}</button><button class="${reg ? 'on' : ''}" data-authmode="register">✨ ${t('c.register')}</button></div><div class="form-block">
-    <label>${reg ? t('c.username') : t('em.userOrMail')}<input id="a-user" autocomplete="username" autocapitalize="off" maxlength="${reg ? 20 : 120}" placeholder="${reg ? esc(t('em.userPh')) : ''}"></label>
-    <label data-mailonly="reg" hidden>${t('em.email')}<input id="a-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="ornek@mail.com"></label>
-    <label>${t('c.password')}<input id="a-pass" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" maxlength="100"></label>
-    <label id="a-codebox" hidden>${t('em.code')}<input id="a-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></label>
-    <button class="btn" data-auth="${reg ? 'register' : 'login'}">${reg ? t('c.register') : t('c.login')}</button>
-    <div class="hint" id="a-msg">${reg ? t('c.passHint') : ''}</div></div></div>
-    <div class="card" data-mailonly hidden><h2>📧 ${t('em.resetTitle')}</h2><div class="form-block">
-      <div class="hint">${t('em.resetHint')}</div>
-      <input id="e-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="${esc(t('em.email'))}">
-      <button class="btn ghost" data-mailcode="reset">✉️ ${t('em.send')}</button>
-      <input id="e-code" inputmode="numeric" maxlength="6" placeholder="${esc(t('em.code'))}">
-      <input id="e-pass" type="password" autocomplete="new-password" maxlength="100" placeholder="${esc(t('c.newPass'))}">
-      <button class="btn" data-mailreset>${t('c.recover')}</button><div class="hint" id="e-msg"></div></div></div>
-    <div class="card"><h2>${t('c.forgot')}</h2><div class="form-block">
-      <div class="hint">${t('c.forgotHint')}</div>
-      <input id="r-user" autocapitalize="off" maxlength="20" placeholder="${esc(t('c.username'))}">
-      <input id="r-code" autocapitalize="characters" maxlength="12" placeholder="${esc(t('c.recCode'))}">
-      <input id="r-pass" type="password" autocomplete="new-password" maxlength="100" placeholder="${esc(t('c.newPass'))}">
-      <button class="btn" data-recover>${t('c.recover')}</button><div class="hint" id="r-msg"></div></div></div>`;
+  if (mailOnV === null) mailOnP().then(on => { mailOnV = on; redrawAuth(); });
+  const mail = !!mailOnV, D = authDraft, v = k => esc(D[k] || '');
+  const tab = (m, ic, label) => `<button class="${authMode === m ? 'on' : ''}" data-authmode="${m}">${ic} ${label}</button>`;
+  let body;
+  if (authMode === 'register' && mail && D.regStep === 'code') {
+    body = `<div class="authstep">📩 ${t('em.sentTo', esc(D.mail))}</div>
+      <label>${t('em.code')}<input id="a-code" class="codein" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" value="${v('code')}"></label>
+      ${authPass ? '' : `<label>${t('em.passAgain')}<input id="a-pass" type="password" autocomplete="new-password" maxlength="100"></label>`}
+      <button class="btn" data-auth="register">✅ ${t('em.create')}</button>
+      <div class="authlinks"><button class="linkbtn" data-regresend>🔁 ${t('em.resend')}</button><button class="linkbtn" data-regback>✏️ ${t('em.change')}</button></div>`;
+  } else if (authMode === 'register') {
+    body = `<label>${t('c.username')}<input id="a-user" autocomplete="username" autocapitalize="off" maxlength="20" placeholder="${esc(t('em.userPh'))}" value="${v('user')}"></label>
+      ${mail ? `<label>${t('em.email')}<input id="a-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="ornek@mail.com" value="${v('mail')}"></label>` : ''}
+      <label>${t('c.password')}<input id="a-pass" type="password" autocomplete="new-password" maxlength="100" value="${esc(authPass)}"></label>
+      <button class="btn" data-auth="register">${mail ? '✉️ ' + t('em.sendCode') : t('c.register')}</button>
+      <div class="hint">${t('c.passHint')}</div>`;
+  } else if (authMode === 'forgot') {
+    const mailPart = !mail ? '' : D.resetStep === 'code'
+      ? `<div class="authstep">📩 ${t('em.sentTo', esc(D.resetMail))}</div>
+        <label>${t('em.code')}<input id="e-code" class="codein" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" value="${v('resetCode')}"></label>
+        <label>${t('c.newPass')}<input id="e-pass" type="password" autocomplete="new-password" maxlength="100"></label>
+        <button class="btn" data-mailreset>🔐 ${t('c.recover')}</button>
+        <div class="authlinks"><button class="linkbtn" data-resetresend>🔁 ${t('em.resend')}</button><button class="linkbtn" data-resetback>✏️ ${t('em.change')}</button></div>`
+      : `<div class="hint">${t('em.resetHint')}</div>
+        <label>${t('em.email')}<input id="e-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="ornek@mail.com" value="${v('resetMail')}"></label>
+        <button class="btn" data-resetsend>✉️ ${t('em.sendCode')}</button>`;
+    const oldPart = `<div class="hint">${t('c.forgotHint')}</div>
+        <input id="r-user" autocapitalize="off" maxlength="20" placeholder="${esc(t('c.username'))}">
+        <input id="r-code" autocapitalize="characters" maxlength="12" placeholder="${esc(t('c.recCode'))}">
+        <input id="r-pass" type="password" autocomplete="new-password" maxlength="100" placeholder="${esc(t('c.newPass'))}">
+        <button class="btn ghost" data-recover>${t('c.recover')}</button><div class="hint" id="r-msg"></div>`;
+    body = mail ? `${mailPart}<details class="oldrec"><summary>🔑 ${t('em.haveRec')}</summary><div class="form-block" style="padding:8px 0 0">${oldPart}</div></details>` : oldPart;
+  } else {
+    body = `<label>${mail ? t('em.userOrMail') : t('c.username')}<input id="a-user" autocomplete="username" autocapitalize="off" maxlength="120" value="${v('login')}"></label>
+      <label>${t('c.password')}<input id="a-pass" type="password" autocomplete="current-password" maxlength="100" value="${esc(authPass)}"></label>
+      <button class="btn" data-auth="login">${t('c.login')}</button>
+      <button class="linkbtn" data-authmode="forgot">${t('c.forgot')}?</button>`;
+  }
+  return `<div class="card authcard"><div class="authhead"><img src="logo-g.png" alt=""><b>Grafondex</b><small>${t('em.welcome')}</small></div>
+    <div class="authtabs">${tab('login', '🔑', t('c.login'))}${tab('register', '✨', t('c.register'))}${tab('forgot', '❓', t('em.forgotTab'))}</div>
+    <div class="form-block">${body}<div class="hint" id="a-msg">${esc(D.msg || '')}</div></div></div>`;
 }
 const adminLink = () => `<a class="card adminlink" href="#/admin"><span>🛡️</span><b>${t('admin.title')}</b><i>›</i></a>`;
 async function viewAdmin() {
@@ -3400,47 +3426,73 @@ document.addEventListener('click', async e => {
   if (send) { chatSend(send.closest('.chat')); return; }
 
   const am = e.target.closest('[data-authmode]');
-  if (am) { authMode = am.dataset.authmode; const box = am.closest('.authcard'); if (box) box.outerHTML = authForm().split('</div></div></div>')[0] + '</div></div></div>'; return; }
-  const au = e.target.closest('[data-auth]');
-  if (au) {
-    const kind = au.dataset.auth, msg = document.getElementById('a-msg');
-    if (kind === 'logout') { authMode = 'login'; try { await capi('POST', '/logout'); } catch {} acct = null; store.set('acct', null); dmPriv = null; dmPub = ''; sharedKeys.clear(); render(); return; }
-    const username = document.getElementById('a-user').value.trim(), password = document.getElementById('a-pass').value;
-    const email = document.getElementById('a-mail')?.value.trim() || '', code = document.getElementById('a-code')?.value.trim() || '';
-    // sign-up with e-mail: the first tap sends the code, the second (with the code typed in) creates the account
-    if (kind === 'register' && await mailOnP() && !code) {
-      if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) { msg.textContent = '❌ ' + errText({ code: 'bad_username' }); return; }
-      if (password.length < 8) { msg.textContent = '❌ ' + errText({ code: 'bad_password' }); return; }
-      if (!email) { msg.textContent = '❌ ' + t('em.need'); document.getElementById('a-mail')?.focus(); return; }
-      msg.textContent = t('sending');
-      try { await capi('POST', '/email/code', { email, purpose: 'register', lang: LANG }); document.getElementById('a-codebox').hidden = false; document.getElementById('a-code').focus(); msg.textContent = '📩 ' + t('em.sent', email); }
-      catch (err) { msg.textContent = '❌ ' + errText(err); }
-      return;
-    }
-    msg.textContent = t('sending');
-    try {
-      const r = await capi('POST', '/' + kind, kind === 'register' ? { username, password, email, code } : { username, password });
-      authMode = 'login'; acct = { token: r.token, user: r.user }; store.set('acct', acct); render();
-      dmPriv = null; dmSetup(password).catch(() => {}); loadBlocks();
-    } catch (err) { msg.textContent = '❌ ' + errText(err); }
+  if (am) { authMode = authDraft.mode = am.dataset.authmode; authDraft.msg = ''; saveDraft(); redrawAuth(); return; }
+  const amsg = (txt, keep) => { const m = document.getElementById('a-msg'); if (m) m.textContent = txt; authDraft.msg = keep ? txt : ''; saveDraft(); };
+  const signedIn = (r, password) => { clearDraft(); authMode = 'login'; acct = { token: r.token, user: r.user }; store.set('acct', acct); render(); dmPriv = null; if (password) dmSetup(password).catch(() => {}); loadBlocks(); };
+  const sendCode = async (email, purpose) => { await capi('POST', '/email/code', { email, purpose, lang: LANG }); };
+  if (e.target.closest('[data-regback]')) { authDraft.regStep = ''; authDraft.msg = ''; saveDraft(); redrawAuth(); return; }
+  if (e.target.closest('[data-resetback]')) { authDraft.resetStep = ''; authDraft.msg = ''; saveDraft(); redrawAuth(); return; }
+  const rs = e.target.closest('[data-regresend],[data-resetresend]');
+  if (rs) {
+    const reg = rs.hasAttribute('data-regresend');
+    amsg(t('sending')); rs.disabled = true; setTimeout(() => { rs.disabled = false; }, 60000);
+    try { await sendCode(reg ? authDraft.mail : authDraft.resetMail, reg ? 'register' : 'reset'); amsg('📩 ' + t('em.resent'), true); } catch (err) { amsg('❌ ' + errText(err)); rs.disabled = false; }
     return;
   }
-
+  if (e.target.closest('[data-resetsend]')) {
+    const email = document.getElementById('e-mail')?.value.trim() || '';
+    if (!email) { amsg('❌ ' + t('em.need')); return; }
+    amsg(t('sending'));
+    try { await sendCode(email, 'reset'); authDraft.resetMail = email; authDraft.resetStep = 'code'; authDraft.msg = ''; saveDraft(); redrawAuth(); document.getElementById('e-code')?.focus(); }
+    catch (err) { amsg('❌ ' + errText(err)); }
+    return;
+  }
+  if (e.target.closest('[data-mailreset]')) {
+    amsg(t('sending'));
+    try {
+      const np = document.getElementById('e-pass').value;
+      const r = await capi('POST', '/email/reset', { email: authDraft.resetMail, code: document.getElementById('e-code').value.trim(), password: np });
+      signedIn(r, np);
+    } catch (err) { amsg('❌ ' + errText(err)); }
+    return;
+  }
+  const au = e.target.closest('[data-auth]');
+  if (au) {
+    const kind = au.dataset.auth;
+    if (kind === 'logout') { clearDraft(); authMode = 'login'; try { await capi('POST', '/logout'); } catch {} acct = null; store.set('acct', null); dmPriv = null; dmPub = ''; sharedKeys.clear(); render(); return; }
+    const val = id => document.getElementById(id)?.value.trim() || '';
+    if (kind === 'login') {
+      const username = val('a-user'), password = document.getElementById('a-pass').value;
+      amsg(t('sending'));
+      try { signedIn(await capi('POST', '/login', { username, password }), password); } catch (err) { amsg('❌ ' + errText(err)); }
+      return;
+    }
+    // sign-up: step 1 sends the code to the e-mail, step 2 (code typed in) creates the account
+    if (await mailOnP() && authDraft.regStep !== 'code') {
+      const username = val('a-user'), email = val('a-mail'), password = document.getElementById('a-pass').value;
+      if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) { amsg('❌ ' + errText({ code: 'bad_username' })); return; }
+      if (!email) { amsg('❌ ' + t('em.need')); return; }
+      if (password.length < 8) { amsg('❌ ' + errText({ code: 'bad_password' })); return; }
+      amsg(t('sending'));
+      try { await sendCode(email, 'register'); Object.assign(authDraft, { user: username, mail: email, regStep: 'code', msg: '' }); authPass = password; saveDraft(); redrawAuth(); document.getElementById('a-code')?.focus(); }
+      catch (err) { amsg('❌ ' + errText(err)); }
+      return;
+    }
+    const password = authPass || document.getElementById('a-pass')?.value || '';
+    const body = authDraft.regStep === 'code' ? { username: authDraft.user, email: authDraft.mail, code: val('a-code'), password } : { username: val('a-user'), password };
+    if (password.length < 8) { amsg('❌ ' + errText({ code: 'bad_password' })); return; }
+    amsg(t('sending'));
+    try { signedIn(await capi('POST', '/register', body), password); }
+    catch (err) { if (['username_taken', 'bad_username', 'profanity', 'email_taken'].includes(err.code)) { authDraft.regStep = ''; saveDraft(); redrawAuth(); } amsg('❌ ' + errText(err), true); }
+    return;
+  }
   const mc = e.target.closest('[data-mailcode]');
-  if (mc) {
+  if (mc) { // profile: adding an e-mail to an existing account
     const box = mc.closest('.form-block'), m = box.querySelector('.hint[id]'), email = box.querySelector('input[type=email]').value.trim();
     if (!email) { m.textContent = '❌ ' + t('em.need'); return; }
     m.textContent = t('sending'); mc.disabled = true; setTimeout(() => { mc.disabled = false; }, 60000);
     try { await capi('POST', '/email/code', { email, purpose: mc.dataset.mailcode, lang: LANG }); m.textContent = '📩 ' + t('em.sent', email); box.querySelector('input[inputmode=numeric]')?.focus(); }
     catch (err) { m.textContent = '❌ ' + errText(err); mc.disabled = false; }
-    return;
-  }
-  if (e.target.closest('[data-mailreset]')) {
-    const m = document.getElementById('e-msg'); m.textContent = t('sending');
-    try {
-      const r = await capi('POST', '/email/reset', { email: document.getElementById('e-mail').value.trim(), code: document.getElementById('e-code').value.trim(), password: document.getElementById('e-pass').value });
-      acct = { token: r.token, user: r.user }; store.set('acct', acct); dmPriv = null; render();
-    } catch (err) { m.textContent = '❌ ' + errText(err); }
     return;
   }
   if (e.target.closest('[data-mailattach]')) {
@@ -4141,7 +4193,8 @@ setInterval(() => {
   const live = document.querySelector('.mtime.live, .hero .st.live, .ssst.live');
   if (live || ++ticks % 6 === 0) render(true);
 }, 5000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) render(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !document.querySelector('.authcard')) render(true); }); // the sign-in card is never redrawn under the user's fingers
+document.addEventListener('input', e => { const m = { 'a-user': authMode === 'login' ? 'login' : 'user', 'a-mail': 'mail', 'a-code': 'code', 'e-mail': 'resetMail', 'e-code': 'resetCode' }[e.target.id]; if (m) { authDraft[m] = e.target.value; saveDraft(); } if (e.target.id === 'a-pass') authPass = e.target.value; });
 
 // the running minute: add the seconds since the last refresh to ESPN's clock; the shown minute moves when a full minute passes
 setInterval(() => {
