@@ -1,5 +1,5 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
-const V = 'grafondex-v76';
+const V = 'grafondex-v77';
 const SHELL = ['./', 'index.html', 'i18n-tr.js', 'i18n-en.js', 'i18n-de.js', 'i18n-ru.js', 'i18n-ku.js', 'i18n-fr.js', 'i18n-es.js', 'i18n-pl.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html'];
 // the sounds live in sounds/; one missing file must not stop the new version from installing
 const SOUNDS = ['goal', 'whistle_start', 'whistle_ht', 'whistle_end', 'groan', 'red', 'var', 'ding'].map(n => 'sounds/' + n + '.mp3');
@@ -49,7 +49,9 @@ self.addEventListener('push', e => {
   try { d = e.data.json(); } catch {}
   e.waitUntil(Promise.all([
     self.registration.showNotification(d.title || 'Grafondex', {
-      body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', data: { url: d.url || './' },
+      // the club's crest as the picture; "open the match" and "mute this match" right on the notification
+      body: d.body || '', icon: d.icon || 'icon-192.png', badge: 'icon-192.png', data: { url: d.url || './', mid: d.mid || '', w: d.w || '' },
+      actions: d.acts && d.mid ? [{ action: 'open', title: d.acts[0] }, { action: 'mute', title: d.acts[1] }] : [],
       vibrate: ({ goal: [300, 100, 300, 100, 600], cancel: [600, 200, 200], miss: [600, 200, 200], red: [800, 150, 800], var: [100, 80, 100, 80, 100], start: [500], ht: [200, 150, 200], end: [200, 100, 200, 100, 700], remind: [150] })[d.kind] || [200, 100, 200], // each kind buzzes differently; the sound itself is the phone's own
       silent: false, renotify: true, tag: 'gx-' + (d.kind || '') + (d.title || '').slice(0, 20),
     }),
@@ -59,9 +61,15 @@ self.addEventListener('push', e => {
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const url = e.notification.data?.url || './';
+  const nd = e.notification.data || {};
+  if (e.action === 'mute' && nd.mid && nd.w) { // no more notifications from this match on this phone
+    e.waitUntil(self.registration.pushManager.getSubscription().then(sub => sub && fetch(nd.w + '/mute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint, mid: nd.mid }) })).catch(() => {}));
+    return;
+  }
+  const url = nd.url || './';
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
     const c = cs.find(w => 'focus' in w);
-    return c ? c.focus() : clients.openWindow(url);
+    if (!c) return clients.openWindow(url);
+    return (url.includes('#') && c.navigate ? c.navigate(url).then(w => (w || c).focus()) : c.focus()).catch(() => c.focus()); // straight to the match
   }));
 });
