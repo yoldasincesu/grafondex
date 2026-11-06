@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f4fd8">
 <script>try{var m=JSON.parse(localStorage.getItem("theme")||'"auto"');document.documentElement.dataset.theme=(m==="dark"||(m==="auto"&&matchMedia("(prefers-color-scheme: dark)").matches))?"dark":"light"}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -695,6 +697,118 @@ img.logo.tcrest{width:18px;height:18px;object-fit:contain;flex:none}img.logo.tcr
 .authcard .authtabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px 12px 2px}.authcard .authtabs button{padding:9px 4px;font-size:13px;white-space:nowrap}
 .authstep{background:var(--card2);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.4}.codein{font:800 26px ui-monospace,monospace;letter-spacing:10px;text-align:center}
 .linkbtn{background:none;border:0;color:var(--accent);font:inherit;font-size:13px;padding:6px;cursor:pointer}.authlinks{display:flex;justify-content:space-between}.oldrec{margin-top:6px;border-top:1px solid var(--line);padding-top:8px}.oldrec summary{cursor:pointer;color:var(--muted);font-size:13px}
+/* ============ Design v2: calm, flat, consistent (one accent colour, neutral surfaces, line icons, Inter) ============ */
+html[data-theme]{--bg:#f4f5f7;--card:#ffffff;--card2:#f1f3f6;--line:#e5e7eb;--text:#101828;--muted:#667085;--accent:#2563eb;--accent2:#2563eb;--live:#e5484d;--star:#f5a524;
+  --grad:var(--accent);--radius:14px;--shadow:none;--ease:cubic-bezier(.2,.8,.2,1)}
+html[data-theme="dark"]{--bg:#0b0d12;--card:#14171e;--card2:#1b1f28;--line:#242a35;--text:#e8ebf0;--muted:#8b93a1;--accent:#4c8dff;--accent2:#4c8dff;--shadow:none}
+html[data-theme] body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14.5px;letter-spacing:-.005em;-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01"}
+html[data-theme] main{padding-top:12px}
+/* header: flat, same family as the page */
+html[data-theme] header{background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);color:var(--text);box-shadow:none;border-bottom:1px solid var(--line);height:54px}
+html[data-theme] header h1{font-size:17px;font-weight:700;letter-spacing:-.01em}
+html[data-theme] .iconbtn{color:var(--text);width:38px;height:38px;border-radius:10px;font-size:20px}
+html[data-theme] .iconbtn:active{background:var(--card2)}
+html[data-theme] .hlogo{width:30px;height:30px;background:transparent;padding:0}
+html[data-theme] header::after,html[data-theme] header::before{display:none}
+/* cards */
+html[data-theme] .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:none;margin-bottom:10px}
+html[data-theme] .card h2{font-size:12px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:.01em;padding:11px 14px;border-bottom:1px solid var(--line);gap:8px;background:transparent}
+html[data-theme] .card h2 a.lglink{color:var(--text);font-weight:600;font-size:13.5px;gap:10px}
+html[data-theme] .card h2 a.lglink span,html[data-theme] .card h2 .lgname{color:var(--text)}
+html[data-theme] .card h2 .lgname small{color:var(--muted);font-weight:500;font-size:11px;display:block}
+html[data-theme] .card h2>a:last-child:not(.lglink){color:var(--muted);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px}
+html[data-theme] .card h2>a:last-child:not(.lglink):active{background:var(--card2)}
+html[data-theme] .lgi.ld,html[data-theme] .card h2 .lgi{width:22px;height:22px;object-fit:contain;box-shadow:none;border-radius:4px}
+/* match rows */
+html[data-theme] .match{padding:10px 14px;gap:12px;border-bottom:1px solid var(--line)}
+html[data-theme] .match:last-child{border-bottom:0}
+html[data-theme] .match:active{background:var(--card2)}
+html[data-theme] .mtime{width:40px;font-size:12px;font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+html[data-theme] .mtime.live{color:var(--live);font-weight:700}
+html[data-theme] .teams{gap:4px}
+html[data-theme] .tm{gap:10px;font-size:14px;font-weight:500;min-height:22px}
+html[data-theme] .tm .logo,html[data-theme] .tm img.logo,html[data-theme] .tm .tinit,html[data-theme] img.logo.tcrest{width:20px;height:20px}
+html[data-theme] .ts{font-weight:700;font-variant-numeric:tabular-nums;font-size:14px}
+html[data-theme] .tinit{border-radius:50%;background:var(--card2);color:var(--muted);font-size:10px;font-weight:700;display:inline-grid;place-items:center;border:1px solid var(--line)}
+/* date strip */
+html[data-theme] .datebar{gap:6px}
+html[data-theme] .datebar a,html[data-theme] .datebar .cal{background:var(--card);border:1px solid var(--line);border-radius:12px;color:var(--muted);font-size:11px;font-weight:500;box-shadow:none}
+html[data-theme] .datebar a b{color:var(--text);font-weight:700;font-size:16px}
+html[data-theme] .datebar a.on{background:var(--text);border-color:var(--text);color:var(--bg);box-shadow:none}
+html[data-theme] .datebar a.on b,html[data-theme] .datebar a.on i{color:var(--bg)}
+html[data-theme] .datebar .cal .ui-i{width:18px;height:18px}
+/* sport bar & chips: quiet pills */
+html[data-theme] .sportbar button,html[data-theme] .chips a,html[data-theme] .chips button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:999px;font-size:13px;font-weight:600;padding:7px 13px;box-shadow:none;display:inline-flex;align-items:center;gap:6px}
+html[data-theme] .sportbar button.on,html[data-theme] .chips a.on,html[data-theme] .chips button.on{background:var(--text);border-color:var(--text);color:var(--bg);box-shadow:none}
+/* segmented tabs: underline style */
+html[data-theme] .seg{background:transparent;border-radius:0;padding:0;border-bottom:1px solid var(--line);gap:2px;margin-bottom:12px}
+html[data-theme] .seg a,html[data-theme] .seg button{border-radius:0;padding:10px 12px;font-size:13px;font-weight:600;color:var(--muted);background:transparent!important;box-shadow:none!important;border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none}
+html[data-theme] .seg a.on,html[data-theme] .seg button.on{color:var(--text);border-bottom-color:var(--accent)}
+/* buttons */
+html[data-theme] .btn{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:0 16px;min-height:44px;font-size:14px;font-weight:600;box-shadow:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+html[data-theme] .btn:active{filter:brightness(.92)}
+html[data-theme] .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line);box-shadow:none}
+html[data-theme] .btn.ghost:active{background:var(--card2)}
+html[data-theme] .btn.danger,html[data-theme] .btn.ghost.danger{color:var(--live)}
+html[data-theme] .cbtn{border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;box-shadow:none}
+html[data-theme] .linkbtn{color:var(--accent);font-weight:600}
+/* forms */
+html[data-theme] .form-block{padding:14px;gap:12px}
+html[data-theme] .form-block label{font-size:12px;font-weight:600;color:var(--muted);gap:6px}
+html[data-theme] .form-block input,html[data-theme] .form-block select,html[data-theme] .form-block textarea,html[data-theme] .picker{min-height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:14.5px}
+html[data-theme] .form-block textarea{padding:10px 12px}
+html[data-theme] input:focus,html[data-theme] select:focus,html[data-theme] textarea:focus{outline:none;border-color:var(--accent)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+html[data-theme] .hint{color:var(--muted);font-size:12.5px;line-height:1.45}
+/* info rows */
+html[data-theme] .inforow{padding:12px 14px;gap:12px;font-size:14px;align-items:center}
+html[data-theme] .inforow .ic{width:20px;color:var(--muted);display:grid;place-items:center}
+html[data-theme] .inforow .k{font-weight:500;color:var(--muted);font-size:13px}
+html[data-theme] .inforow .v{font-weight:600}
+/* settings rows */
+html[data-theme] .setrow{padding:13px 14px;font-size:14px;gap:12px}
+html[data-theme] .setrow>span{display:inline-flex;align-items:center;gap:10px}
+/* match hero */
+html[data-theme] .hero{padding:18px 12px 14px}
+html[data-theme] .hero .score,html[data-theme] .hero .big{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+/* bottom navigation */
+html[data-theme] nav#tabs{background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);box-shadow:none}
+html[data-theme] nav#tabs a{color:var(--muted);font-weight:500}
+html[data-theme] nav#tabs a span{font-size:10.5px;font-weight:600}
+html[data-theme] nav#tabs a.on{color:var(--text)}
+html[data-theme] nav#tabs a.on::before{background:var(--accent)!important;height:2px!important}
+/* skeleton */
+html[data-theme] .sk{background:linear-gradient(90deg,var(--card2) 25%,var(--line) 50%,var(--card2) 75%);background-size:200% 100%}
+/* line icons */
+.ui-i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px;margin-right:6px}
+.card>h2>.ui-i,.seg .ui-i,.chips .ui-i,.btn .ui-i,.cbtn .ui-i,.authtabs .ui-i,.linkbtn .ui-i,.setrow .ui-i{margin-right:0}
+.card>h2>.ui-i{width:15px;height:15px;color:var(--muted)}
+.inforow .ic .ui-i{width:18px;height:18px;margin:0}
+.btn .ui-i{width:17px;height:17px}
+.empty .ui-i{display:block;width:32px;height:32px;margin:0 auto 10px;color:var(--muted)}
+/* small things */
+html[data-theme] .empty{color:var(--muted);font-size:14px;padding:40px 16px}
+html[data-theme] .tcell{border:1px solid var(--line);border-radius:var(--radius)}
+html[data-theme] .roundnav a{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;font-size:20px}
+html[data-theme] .roundnav select{border-radius:10px}
+html[data-theme] .authtabs button{border-radius:10px!important;font-size:12.5px}
+html[data-theme] .authtabs button.on{background:var(--text)!important;color:var(--bg)!important;border-color:var(--text)!important}
+html[data-theme] .authhead img{width:44px;height:44px}
+html[data-theme] .gtoast{border-radius:14px}
+::selection{background:color-mix(in srgb,var(--accent) 30%,transparent)}
+html[data-theme] .langs{grid-template-columns:repeat(3,1fr);padding:12px 14px;gap:8px}
+html[data-theme] .langbtn{border-radius:10px;background:var(--card2);border:1px solid var(--line);font-size:13px;font-weight:600;padding:10px 6px;color:var(--text)}
+html[data-theme] .langbtn.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+html[data-theme] .langcur{padding:14px;font-weight:600}html[data-theme] .langcur b{color:var(--accent);font-weight:600}html[data-theme] .langcur span{display:inline-flex;align-items:center;gap:10px}
+html[data-theme] .setlink .slic{width:36px;height:36px;border-radius:10px;background:var(--card2);display:grid;place-items:center;color:var(--accent)}html[data-theme] .setlink .slic .ui-i{width:20px;height:20px;margin:0}
+html[data-theme] .setlink b{font-weight:600}html[data-theme] .setlink i{color:var(--muted);font-style:normal}
+html[data-theme] .form-block>label{flex-direction:column}html[data-theme] .form-block>label .ui-i{display:none}
+html[data-theme] .tvtag{display:inline-flex;align-items:center;gap:5px;border-radius:999px;font-weight:600}html[data-theme] .tvtag .ui-i{width:13px;height:13px;margin:0}
+html[data-theme] .card h2 .ui-i{color:var(--muted)}
+html[data-theme] .lgi.ld,html[data-theme] .card h2 img.lgi{padding:2px}
+html[data-theme="dark"] .card h2 img.lgi{background:#fff;border-radius:6px}
+html[data-theme] .datebar a.on,html[data-theme] .sportbar button.on,html[data-theme] .chips a.on{transition:none}
+html[data-theme] .board .bi{width:40px;height:40px;border-radius:12px;background:var(--card2);display:grid;place-items:center;color:var(--accent);font-size:20px;flex:none}html[data-theme] .board .bi .ui-i{width:20px;height:20px;margin:0}
+html[data-theme] .tstats span{display:inline-flex;align-items:center;gap:4px}html[data-theme] .tstats .ui-i{width:14px;height:14px;margin:0}
 </style>
 </head>
 <body>
@@ -716,7 +830,7 @@ img.logo.tcrest{width:18px;height:18px;object-fit:contain;flex:none}img.logo.tcr
   <a href="#/profile" data-tab="profile"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></i><span>Profil</span></a>
   <a href="#/settings" data-tab="settings"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></i><span>Ayarlar</span></a>
 </nav>
-<script src="i18n.js?v=63"></script>
-<script src="app.js?v=63"></script>
+<script src="i18n.js?v=64"></script>
+<script src="app.js?v=64"></script>
 </body>
 </html>

@@ -295,7 +295,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
@@ -4222,4 +4222,113 @@ if ('serviceWorker' in navigator) {
   const hadSw = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSw && !sessionStorage.getItem('gx-reloaded')) { sessionStorage.setItem('gx-reloaded', '1'); location.reload(); } });
   setTimeout(() => sessionStorage.removeItem('gx-reloaded'), 20000);
+}
+
+// ---- UI icons: the emoji in headings, tabs, buttons and info rows are swapped for one consistent set of line icons
+// (Lucide-style, 24×24, stroke = currentColor). Emoji inside user text (posts, chat, names) are never touched.
+const ICP = {
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  stadium: '<ellipse cx="12" cy="8" rx="9" ry="3"/><path d="M3 8v8c0 1.7 4 3 9 3s9-1.3 9-3V8"/><path d="M8 18.6v-4M16 18.6v-4M12 19v-4"/>',
+  tv: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="m17 2-5 5-5-5"/>',
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  mute: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/>',
+  vol: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
+  ball: '<circle cx="12" cy="12" r="10"/><path d="m12 7 4.2 3-1.6 5H9.4l-1.6-5z"/><path d="M12 2v5M21.5 9.5l-5.3.5M17.8 20l-3.2-5M6.2 20l3.2-5M2.5 9.5l5.3.5"/>',
+  key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+  spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+  refresh: '<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',
+  pen: '<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
+  check: '<circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/>',
+  tick: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  play: '<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/>',
+  scale: '<path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>',
+  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  trend: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  clip: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  down: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>',
+  news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/>',
+  bars: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 12.9 17 22l-5-3-5 3 1.5-9.1"/>',
+  star: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>',
+  game: '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><rect x="2" y="6" width="20" height="12" rx="6"/>',
+  bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1"/>',
+  trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  money: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
+  palette: '<circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c1 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16a6 6 0 0 0 6-6c0-4.9-4.5-8.4-10-8.4"/>',
+  phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  flag: '<path d="M4 22V4s1-1 4-1 5 2 8 2 4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1"/>',
+  warn: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3M12 9v4M12 17h.01"/>',
+  ruler: '<path d="M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4M7.5 10.5l2-2M10.5 13.5l2-2M13.5 16.5l2-2"/>',
+  cake: '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8M4 16s1.5-1 4-1 4 2 8 2 4-1 4-1M2 21h20M7 8v3M12 8v3M17 8v3M7 4h.01M12 4h.01M17 4h.01"/>',
+  shirt: '<path d="M20.4 3.5 16 2a4 4 0 0 1-8 0L3.6 3.5a2 2 0 0 0-1.3 2.2l.6 3.5a1 1 0 0 0 1 .8H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.1a1 1 0 0 0 1-.8l.6-3.5a2 2 0 0 0-1.3-2.2"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>',
+  book: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7"/><circle cx="12" cy="12" r="3"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  brief: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+  timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/>',
+  hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+  fire: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.3 1.4 1.2 2.7 2.5 2.7"/>',
+  med: '<path d="M8 21h8M12 3v18M3 7h18M6 7l-3 6h6zM18 7l-3 6h6z"/>',
+  hand: '<path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
+  card: '<rect x="6" y="3" width="12" height="18" rx="2"/>',
+  dot: '<circle cx="12" cy="12" r="5"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  bball: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2v20M4.9 4.9a10 10 0 0 1 0 14.2M19.1 4.9a10 10 0 0 0 0 14.2"/>',
+  tennis: '<circle cx="12" cy="12" r="10"/><path d="M6 3.5a10 10 0 0 1 0 17M18 3.5a10 10 0 0 0 0 17"/>',
+  vball: '<circle cx="12" cy="12" r="10"/><path d="M12 12a8 8 0 0 0-7.6-5.5M12 12a8 8 0 0 0 7.6 4.6M12 12a8 8 0 0 1 0 10M12 2a8 8 0 0 1 4 9"/>',
+  car: '<path d="M5 17h14v-4l-2-5H7l-2 5zM5 13h14"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/>',
+};
+const EMO = {
+  '📅': 'cal', '🗓': 'cal', '🏆': 'trophy', '🏟': 'stadium', '🏛': 'stadium', '📺': 'tv', '📼': 'tv', '🔔': 'bell', '🔇': 'mute', '🔊': 'vol',
+  '⚽': 'ball', '🔑': 'key', '✨': 'spark', '❓': 'help', '✉': 'mail', '📧': 'mail', '📩': 'mail', '📨': 'mail', '🔁': 'refresh', '🔄': 'refresh',
+  '✏': 'pen', '✍': 'pen', '📝': 'pen', '✅': 'check', '✓': 'tick', '❌': 'x', '✕': 'x', '🔐': 'lock', '🔒': 'lock', '📤': 'share', '📲': 'phone', '📱': 'phone',
+  '💬': 'chat', '🎬': 'play', '▶': 'play', '⚖': 'scale', '🎯': 'target', '👥': 'users', '🤝': 'users', '👤': 'user', '🧑': 'user', '⛔': 'ban', '🚑': 'med',
+  '📈': 'trend', '📋': 'clip', '📥': 'down', '➕': 'plus', '＋': 'plus', '🛡': 'shield', '📰': 'news', '📊': 'bars', '🗳': 'bars', '🌍': 'globe', '🌐': 'globe',
+  '🏅': 'award', '🎖': 'award', '🥇': 'award', '🥈': 'award', '🥉': 'award', '⭐': 'star', '★': 'star', '🎮': 'game', '🧠': 'bulb', '⚙': 'gear', '🛠': 'gear',
+  '🗑': 'trash', '⏳': 'clock', '⏰': 'clock', '⏱': 'timer', '💶': 'money', '💼': 'brief', '🎨': 'palette', '📍': 'pin', '📌': 'pin', '🚩': 'flag', '⚠': 'warn',
+  '📏': 'ruler', '🎂': 'cake', '👕': 'shirt', '🎙': 'mic', '🎤': 'mic', '📖': 'book', '📚': 'book', '👁': 'eye', '🔗': 'link', '🔎': 'search', '🔍': 'search',
+  '🔢': 'hash', '🔥': 'fire', '✋': 'hand', '🟥': 'card', '🟨': 'card', '🔴': 'dot', 'ⓘ': 'info', '🧑‍⚖️': 'user', '🧮': 'hash', '🕊': 'spark', '😕': 'info', '🏀': 'bball', '🎾': 'tennis', '🏐': 'vball', '🏎': 'car', '🏈': 'ball', '⚾': 'ball', '🏒': 'ball', '🤾': 'ball', '📼': 'tv',
+};
+const svgI = k => `<svg class="ui-i ui-${k}" viewBox="0 0 24 24" aria-hidden="true">${ICP[k]}</svg>`;
+const EMO_RE = /^\s*((?:\p{Extended_Pictographic}|[Ⓜⓘ✓✕＋])(?:️|‍(?:\p{Extended_Pictographic}|♀|♂)️?|\p{Emoji_Modifier})*)\s*/u;
+const IC_SEL = '.card>h2, .card h2>span:first-child, .seg>a, .seg>button, .chips>a, .chips>button, .authtabs>button, .btn, .cbtn, .linkbtn, .inforow .ic, .setrow>span, .setsec>summary, details>summary, .lrow .nm>b, .empty, .gamesbar a, .tabbtn, .adminlink>span, h3, .datebar .cal, .langcur>span, .slic, .form-block>label, .tvtag, .profact .btn, .tstats>span, .board .bi, .form-block>.hint, .setsec>summary>span, .gamesbar>a>span';
+const icDone = new WeakSet();
+function iconize(root = document) {
+  for (const el of root.querySelectorAll(IC_SEL)) {
+    if (icDone.has(el) || el.closest('.post, .msg, .bub, .bubbody, .pbody, .dmrow, .cmt, [data-noicon]')) continue;
+    icDone.add(el);
+    const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n; while ((n = tw.nextNode()) && !n.textContent.trim());
+    if (!n) continue;
+    const m = n.textContent.match(EMO_RE); if (!m) continue;
+    const key = EMO[m[1]] || EMO[m[1].replace(/️/g, '')] || EMO[[...m[1]][0]];
+    if (key === 'star' || key === 'dot') continue; // favourite stars and the live dot keep their own look
+    let rest = n.textContent.slice(m[0].length), m2; while ((m2 = rest.match(EMO_RE))) rest = rest.slice(m2[0].length); // "🌐 🌐 Dil" → one icon
+    n.textContent = rest;
+    if (key) n.parentNode.insertBefore(document.createRange().createContextualFragment(svgI(key)), n);
+    if (el.classList.contains('ic') && !n.textContent.trim() && !key) el.textContent = '';
+  }
+}
+{
+  let icRaf = 0;
+  const run = () => { icRaf = 0; iconize(document); };
+  new MutationObserver(() => { if (!icRaf) icRaf = requestAnimationFrame(run); }).observe(document.documentElement, { childList: true, subtree: true });
+  addEventListener('DOMContentLoaded', run);
 }
