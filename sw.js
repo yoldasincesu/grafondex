@@ -1,5 +1,5 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
-const V = 'grafondex-v75';
+const V = 'grafondex-v76';
 const SHELL = ['./', 'index.html', 'i18n-tr.js', 'i18n-en.js', 'i18n-de.js', 'i18n-ru.js', 'i18n-ku.js', 'i18n-fr.js', 'i18n-es.js', 'i18n-pl.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html'];
 // the sounds live in sounds/; one missing file must not stop the new version from installing
 const SOUNDS = ['goal', 'whistle_start', 'whistle_ht', 'whistle_end', 'groan', 'red', 'var', 'ding'].map(n => 'sounds/' + n + '.mp3');
@@ -26,6 +26,11 @@ function networkFirst(req, cacheName, key = req, init) {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
+  if (url.origin === location.origin && url.pathname.includes('/logos/')) {
+    // club crests inside the app: from the phone's store at once, asked for only the first time
+    e.respondWith(caches.open(IMG).then(c => c.match(e.request).then(hit => hit || fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; }))));
+    return;
+  }
   if (url.origin === location.origin) {
     // app files: always ask the server whether they changed (GitHub Pages would otherwise
     // serve a 10-minute-old copy from the browser cache); every page load is stored under one key
