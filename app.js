@@ -295,15 +295,17 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v63';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
 if (!store.get('voiceOff1', false)) { fx.voice = false; store.set('fx', fx); store.set('voiceOff1', true); }
 let actx = null;
-const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; } catch { return null; } };
+const audioCtx = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); if (actx.state !== 'running') actx.resume().catch(() => {}); return actx; } catch { return null; } };
 // browsers only allow sound after a first tap: unlock it on the first interaction
-addEventListener('pointerdown', () => audioCtx(), { once: true, passive: true });
+// phones suspend (or 'interrupt') the audio again after the app was in the background: every tap wakes it up
+addEventListener('pointerdown', () => audioCtx(), { passive: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && actx && actx.state !== 'running') actx.resume().catch(() => {}); });
 // sound effects: stadium recordings made for the app (sounds/*.mp3: crowd + horn, referee whistles, groan, chimes), decoded once;
 // until they are loaded (or if they fail) the old synthesised tones play instead
 const SFX = { goal: 'goal', concede: 'groan', miss: 'groan', start: 'whistle_start', ht: 'whistle_ht', end: 'whistle_end', cancel: 'groan', red: 'red', var: 'var', remind: 'ding', chime: 'ding' };
@@ -315,15 +317,18 @@ const sfxBuf = {};
 let sfxLoading = null;
 function sfxLoad() {
   const c = audioCtx(); if (!c || sfxLoading) return sfxLoading;
+  setTimeout(() => { if (Object.keys(sfxBuf).length < new Set(Object.values(SFX)).size) sfxLoading = null; }, 20000); // some failed (offline, old cache): try again later
   sfxLoading = Promise.all([...new Set(Object.values(SFX))].map(n => fetch(`sounds/${n}.mp3`).then(r => r.ok ? r : fetch(`${n}.mp3`)).then(r => r.arrayBuffer()).then(b => new Promise((ok, no) => c.decodeAudioData(b, ok, no))).then(buf => { sfxBuf[n] = buf; }).catch(() => {})));
   return sfxLoading;
 }
 addEventListener('pointerdown', () => sfxLoad(), { once: true, passive: true });
 function sfxPlay(kind, vol = 1) {
-  const c = audioCtx(), buf = sfxBuf[SFX[kind]];
-  if (!c || !buf) { sfxLoad(); return false; }
-  const src = c.createBufferSource(), g = c.createGain(); src.buffer = buf; g.gain.value = vol * fx.vol; src.connect(g); g.connect(c.destination); src.start();
-  return true;
+  const n = SFX[kind]; if (!n) return false;
+  const c = audioCtx(), buf = sfxBuf[n];
+  if (c && buf && c.state === 'running') { const src = c.createBufferSource(), g = c.createGain(); src.buffer = buf; g.gain.value = vol * fx.vol; src.connect(g); g.connect(c.destination); src.start(); return true; }
+  // not decoded yet, or the phone keeps Web Audio asleep: play the file with a plain <audio>, which phones allow more readily
+  sfxLoad();
+  try { const a = new Audio(`sounds/${n}.mp3`); a.volume = Math.max(0, Math.min(1, vol * fx.vol)); const p = a.play(); if (p) p.catch(() => {}); return true; } catch { return false; }
 }
 function goalSound() { // stadium crowd + air horn (falls back to the synthesised version)
   const c = audioCtx(); if (!c || sndMuted('goal')) return;
@@ -510,7 +515,7 @@ function fillBadges() {
     el.dataset.bd = '1';
     badgeUrl(el.dataset.badge, el.dataset.bsp).then(u => {
       if (!u || !el.isConnected) return;
-      const im = new Image(); im.alt = ''; im.loading = 'lazy';
+      const im = new Image(); im.alt = ''; // not loading=lazy: an image outside the page never loads with it, so onload never came
       im.onload = () => { if (!el.isConnected) return; if (el.classList.contains('tinit')) { im.className = 'logo tcrest' + (el.classList.contains('big') ? ' big' : ''); el.replaceWith(im); } else if (el.classList.contains('tl')) { im.className = 'logo ' + el.className.replace(/\b(logo|ph|tl)\b/g, '').trim(); el.replaceWith(im); } else { im.style.objectFit = 'contain'; el.appendChild(im); } };
       im.src = u;
     });
