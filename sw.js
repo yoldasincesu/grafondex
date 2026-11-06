@@ -1,6 +1,6 @@
 // Network first for everything (always the newest app and scores); the last saved copy is used when offline.
-const V = 'grafondex-v68';
-const SHELL = ['./', 'index.html', 'i18n.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html'];
+const V = 'grafondex-v69';
+const SHELL = ['./', 'index.html', 'i18n-tr.js', 'i18n-en.js', 'i18n-de.js', 'i18n-ru.js', 'i18n-ku.js', 'i18n-fr.js', 'i18n-es.js', 'i18n-pl.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'logo-g.png', 'logo.png', 'offline.html'];
 // the sounds live in sounds/; one missing file must not stop the new version from installing
 const SOUNDS = ['goal', 'whistle_start', 'whistle_ht', 'whistle_end', 'groan', 'red', 'var', 'ding'].map(n => 'sounds/' + n + '.mp3');
 
