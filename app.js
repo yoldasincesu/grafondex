@@ -407,7 +407,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
@@ -867,6 +867,7 @@ function liveHero(rows) {
       ${lastEv ? `<div class="lhlast">${lastEv}</div>` : ''}</a>`;
   }).join('');
 }
+const sbTtl = new Map();
 async function viewMatches(dateStr) {
   setTitle(t('nav.matches'));
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -898,7 +899,9 @@ async function viewMatches(dateStr) {
   const [allDays, res, tvItems, ztk, ...tffRes] = await Promise.all([
     soccer ? Promise.allSettled(days.map(day => get(`${SITE}soccer/all/scoreboard?dates=${day}&limit=500`, 60000))) : [],
     Promise.allSettled(single.flatMap(l => days.map(day =>
-      get(`${api(l)}/scoreboard?dates=${day}`).then(j => ({ l, events: j.events || [] }))))),
+      // each league is asked again every 20 s only while it has a game on (or one about to start), otherwise every 10 min
+      // (the default 4 s meant ~80 requests on every refresh of the list)
+      get(`${api(l)}/scoreboard?dates=${day}`, sbTtl.get(`${l}|${day}`) || 20000).then(j => { const ev = j.events || []; sbTtl.set(`${l}|${day}`, ev.some(e => e.status?.type?.state === 'in' || (e.status?.type?.state === 'pre' && new Date(e.date) - Date.now() < 20 * 60e3)) ? 20000 : 600000); return { l, events: ev }; })))),
     // the Worker sources (TV guide, cup, TFF lower leagues) can take a few seconds when cold: the list does not wait for them
     soccer ? soon(tvList(isoDay(d)).catch(() => []), 1200, 'matches').then(v => v || []) : [],
     soccer && enabled.includes('tur.cup') && workerBase() ? soon(ztkData().catch(() => null), 1200, 'matches') : null,
@@ -1199,7 +1202,15 @@ async function viewMatch(league, id) {
   const comp = j.header.competitions[0];
   const [h, a] = sides(comp);
   const s = status(comp.status);
-  const rk = await leagueRanks(league).catch(() => new Map());
+  // everything the page needs besides the summary is asked for at once (it used to go one after the other: ~1 s)
+  const mkey0 = `${league}:${id}`, rost0 = (j.rosters || []).filter(r => r.roster?.length);
+  const rkP = leagueRanks(league).catch(() => new Map());
+  const stP = standingsHtml(league, undefined, [h.team.id, a.team.id]).catch(() => null);
+  const tvP = tvList(trDay(comp.date)).catch(() => []);
+  const threadP = matchThreadCard(mkey0, h, a).catch(() => '');
+  const mvP = motmHtml(mkey0, rost0, s).catch(() => ''), prP = predictHtml(mkey0, comp, s, h, a, probFrom(j)).catch(() => '');
+  const xiP = !rost0.length && (s.cls === 'pre' || s.cls === 'ppd') ? Promise.all([h, a].map(async c => { const te = await teamEvents(c.team.id, league).catch(() => null); return [c.team.displayName, te ? await predictedXi(c.team.id, te.past, c.team.displayName).catch(() => '') : '', img(c.team.id, '', league)]; })) : null;
+  const rk = await rkP;
   const rankChip = c => { const r = rk.get(String(c.team.id)); return r ? `<a class="rkchip" href="#/league/${esc(league)}/puan">${t('o.rank', r.rank)}</a>` : ''; };
   const sideHtml = c => `<div class="side"><a href="#/team/${league}/${c.team.id}">${img(c.team.id, 'big', league)}<span>${esc(c.team.displayName)}</span></a>${rankChip(c)}${formHtml(c.form)}${favStar(c.team.id, c.team.displayName, league)}</div>`;
   const hc = fxCol(h.team.color, '#2563eb'), ac = fxCol(a.team.color && a.team.color !== h.team.color ? a.team.color : a.team.alternateColor, '#e5484d');
@@ -1267,13 +1278,13 @@ async function viewMatch(league, id) {
   let luHtml = luSwitch(rosters.map(r => [r.team.displayName, lineup(r), img(r.team.id, '', league)]));
   // before kick-off ESPN often has no line-up yet: show each side's likely eleven (its last line-up) instead
   if (!luHtml && (s.cls === 'pre' || s.cls === 'ppd')) {
-    luHtml = luSwitch((await Promise.all([h, a].map(async c => { const te = await teamEvents(c.team.id, league).catch(() => null); return [c.team.displayName, te ? await predictedXi(c.team.id, te.past, c.team.displayName).catch(() => '') : '', img(c.team.id, '', league)]; }))).filter(x => x[1]));
+    luHtml = luSwitch(xiP ? await xiP : (await Promise.all([h, a].map(async c => { const te = await teamEvents(c.team.id, league).catch(() => null); return [c.team.displayName, te ? await predictedXi(c.team.id, te.past, c.team.displayName).catch(() => '') : '', img(c.team.id, '', league)]; }))).filter(x => x[1]));
   }
   if (!luHtml) luHtml = `<div class="empty">${t('noLineups')}</div>`;
 
   // match info: everything ESPN knows about the venue, crowd, officials and TV
   const gi = j.gameInfo || {};
-  const tvTr = tvFor(await tvList(trDay(comp.date)), comp.date, h.team.displayName, a.team.displayName, league);
+  const tvTr = tvFor(await tvP, comp.date, h.team.displayName, a.team.displayName, league);
   const tv = [...new Set([...(j.broadcasts || []), ...(comp.broadcasts || [])].map(b => b.media?.shortName || b.media?.name || b.names?.[0]).filter(Boolean))];
   const ref = (gi.officials || []).map(o => o.displayName || o.fullName).filter(Boolean);
   const infoRows = [
@@ -1290,14 +1301,14 @@ async function viewMatch(league, id) {
   if (tvTr) html = html.replace('<!--tv-->', `<div class="tvtag">📺 ${esc(tvTr)}</div>`);
 
   const k = 'match', mkey = `${league}:${id}`;
-  const threadHtml = await matchThreadCard(mkey, h, a).catch(() => '');
+  const threadHtml = await threadP;
   if (threadHtml) html = html.replace('<!--tv-->', '<!--tv-->') + threadHtml;
-  const [mvHtml, prHtml] = await Promise.all([motmHtml(mkey, rosters, s).catch(() => ''), predictHtml(mkey, comp, s, h, a, probFrom(j)).catch(() => '')]);
+  const [mvHtml, prHtml] = await Promise.all([mvP, prP]);
   const T = { ev: [t('events'), evHtml], st: [t('stats'), stHtml], lu: [t('lineups'), luHtml], rc: [t('recent'), recentHtml(j, [h, a])], inf: [t('info'), infoHtml + calBtn(`${h.team.displayName} – ${a.team.displayName}`, comp.date, [gi.venue?.fullName, lname(leagueOf(league))].filter(Boolean).join(', '))],
     ch: [s.cls === 'live' ? '🔴 ' + t('c.chat') : t('c.chat'), (s.cls === 'live' ? `<div class="hint livechat">🔴 ${t('lc.live')}</div>` : '') + chatHtml('m-soccer-' + id, s.cls === 'post' && Date.now() - new Date(comp.date) > 4 * 3600e3 ? t('lc.closed') : '') + (s.cls === 'post' ? threadHtml : '')], mv: [t('mvp.tab'), mvHtml], pr: [t('pred.tab'), prHtml], ...(commentaryHtml(j) ? { com: ['🎙️ ' + t('com.tab'), lazy(commentaryTr(j))] } : {}), cmp: ['⚖️ ' + t('cmp.tab'), compareHtml(j, h, a, rk) + h2hListHtml(j, h, a) + lazy(refereeHtml(league, gi).catch(() => '')) + (s.cls === 'pre' ? lazy(suspHtml(league, h, a).catch(() => '')) : '')],
     ...(s.cls !== 'pre' && s.cls !== 'ppd' ? { rt: ['⭐ ' + t('rt.tab'), lazy(ratingsHtml(league, id, rosters, s))] } : {}) };
   if (s.cls === 'pre') T.inf[1] = lazy(pollHtml(league, id, h, a)) + T.inf[1];
-  if (rk.size) T.tb = [t('o.standings'), await standingsHtml(league, undefined, [h.team.id, a.team.id]).catch(() => `<div class="empty">${t('noTable')}</div>`)];
+  if (rk.size) T.tb = [t('o.standings'), (await stP) || `<div class="empty">${t('noTable')}</div>`];
   const order = (s.cls === 'pre' || s.cls === 'ppd' ? ['inf', 'cmp', 'lu', 'rc', 'pr', 'tb', 'ch', 'ev', 'st', 'mv'] : (s.cls === 'live' ? ['ev', 'ch', 'com', 'st', 'lu', 'rt', 'tb', 'cmp', 'rc', 'inf', 'mv', 'pr'] : ['ev', 'com', 'st', 'lu', 'rt', 'tb', 'cmp', 'rc', 'inf', 'ch', 'mv', 'pr'])).filter(x => T[x]);
   if (s.cls === 'live' && order.includes('ch')) html = html.replace('<!--chjump-->', `<button class="cbtn txt" data-segjump="${k}:${order.indexOf('ch')}">💬 ${t('lc.btn')}</button>`);
   html += seg(k, order.map(x => T[x][0])) + order.map((x, i) => pane(k, i, T[x][1])).join('');
@@ -4376,6 +4387,9 @@ render();
 setTimeout(() => probeLeagues().catch(() => {}), 4000);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // a phone keeps the app open for days: look for a new version whenever it comes back to the front (at most every 30 min)
+  let swChecked = Date.now();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - swChecked > 30 * 60e3) { swChecked = Date.now(); navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {}); } });
   // a new version took over (the service worker updates itself): reload once so the page and its scripts match
   const hadSw = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSw && !sessionStorage.getItem('gx-reloaded')) { sessionStorage.setItem('gx-reloaded', '1'); location.reload(); } });
