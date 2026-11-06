@@ -11,6 +11,118 @@ const api = l => SITE + pathOf(l);
 const apiSt = l => 'https://site.web.api.espn.com/apis/v2/sports/' + pathOf(l);
 const core = l => { const [sp, lg] = pathOf(l).split('/'); return `https://sports.core.api.espn.com/v2/sports/${sp}/leagues/${lg}`; };
 
+// ---- UI icons: the emoji in headings, tabs, buttons and info rows are swapped for one consistent set of line icons
+// (Lucide-style, 24×24, stroke = currentColor). Emoji inside user text (posts, chat, names) are never touched.
+const ICP = {
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  stadium: '<ellipse cx="12" cy="8" rx="9" ry="3"/><path d="M3 8v8c0 1.7 4 3 9 3s9-1.3 9-3V8"/><path d="M8 18.6v-4M16 18.6v-4M12 19v-4"/>',
+  tv: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="m17 2-5 5-5-5"/>',
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  mute: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/>',
+  vol: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
+  ball: '<circle cx="12" cy="12" r="10"/><path d="m12 7 4.2 3-1.6 5H9.4l-1.6-5z"/><path d="M12 2v5M21.5 9.5l-5.3.5M17.8 20l-3.2-5M6.2 20l3.2-5M2.5 9.5l5.3.5"/>',
+  key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+  spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+  refresh: '<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',
+  pen: '<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
+  check: '<circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/>',
+  tick: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  play: '<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/>',
+  scale: '<path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>',
+  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  trend: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  clip: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  down: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>',
+  news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/>',
+  bars: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 12.9 17 22l-5-3-5 3 1.5-9.1"/>',
+  star: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>',
+  game: '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><rect x="2" y="6" width="20" height="12" rx="6"/>',
+  bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1"/>',
+  trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  money: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
+  palette: '<circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c1 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16a6 6 0 0 0 6-6c0-4.9-4.5-8.4-10-8.4"/>',
+  phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  flag: '<path d="M4 22V4s1-1 4-1 5 2 8 2 4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1"/>',
+  warn: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3M12 9v4M12 17h.01"/>',
+  ruler: '<path d="M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4M7.5 10.5l2-2M10.5 13.5l2-2M13.5 16.5l2-2"/>',
+  cake: '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8M4 16s1.5-1 4-1 4 2 8 2 4-1 4-1M2 21h20M7 8v3M12 8v3M17 8v3M7 4h.01M12 4h.01M17 4h.01"/>',
+  shirt: '<path d="M20.4 3.5 16 2a4 4 0 0 1-8 0L3.6 3.5a2 2 0 0 0-1.3 2.2l.6 3.5a1 1 0 0 0 1 .8H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.1a1 1 0 0 0 1-.8l.6-3.5a2 2 0 0 0-1.3-2.2"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>',
+  book: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7"/><circle cx="12" cy="12" r="3"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  brief: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+  timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/>',
+  hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+  fire: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.3 1.4 1.2 2.7 2.5 2.7"/>',
+  med: '<path d="M8 21h8M12 3v18M3 7h18M6 7l-3 6h6zM18 7l-3 6h6z"/>',
+  hand: '<path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
+  card: '<rect x="6" y="3" width="12" height="18" rx="2"/>',
+  dot: '<circle cx="12" cy="12" r="5"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  bball: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2v20M4.9 4.9a10 10 0 0 1 0 14.2M19.1 4.9a10 10 0 0 0 0 14.2"/>',
+  tennis: '<circle cx="12" cy="12" r="10"/><path d="M6 3.5a10 10 0 0 1 0 17M18 3.5a10 10 0 0 0 0 17"/>',
+  vball: '<circle cx="12" cy="12" r="10"/><path d="M12 12a8 8 0 0 0-7.6-5.5M12 12a8 8 0 0 0 7.6 4.6M12 12a8 8 0 0 1 0 10M12 2a8 8 0 0 1 4 9"/>',
+  car: '<path d="M5 17h14v-4l-2-5H7l-2 5zM5 13h14"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/>',
+};
+const EMO = {
+  '📅': 'cal', '🗓': 'cal', '🏆': 'trophy', '🏟': 'stadium', '🏛': 'stadium', '📺': 'tv', '📼': 'tv', '🔔': 'bell', '🔇': 'mute', '🔊': 'vol',
+  '⚽': 'ball', '🔑': 'key', '✨': 'spark', '❓': 'help', '✉': 'mail', '📧': 'mail', '📩': 'mail', '📨': 'mail', '🔁': 'refresh', '🔄': 'refresh',
+  '✏': 'pen', '✍': 'pen', '📝': 'pen', '✅': 'check', '✓': 'tick', '❌': 'x', '✕': 'x', '🔐': 'lock', '🔒': 'lock', '📤': 'share', '📲': 'phone', '📱': 'phone',
+  '💬': 'chat', '🎬': 'play', '▶': 'play', '⚖': 'scale', '🎯': 'target', '👥': 'users', '🤝': 'users', '👤': 'user', '🧑': 'user', '⛔': 'ban', '🚑': 'med',
+  '📈': 'trend', '📋': 'clip', '📥': 'down', '➕': 'plus', '＋': 'plus', '🛡': 'shield', '📰': 'news', '📊': 'bars', '🗳': 'bars', '🌍': 'globe', '🌐': 'globe',
+  '🏅': 'award', '🎖': 'award', '🥇': 'award', '🥈': 'award', '🥉': 'award', '⭐': 'star', '★': 'star', '🎮': 'game', '🧠': 'bulb', '⚙': 'gear', '🛠': 'gear',
+  '🗑': 'trash', '⏳': 'clock', '⏰': 'clock', '⏱': 'timer', '💶': 'money', '💼': 'brief', '🎨': 'palette', '📍': 'pin', '📌': 'pin', '🚩': 'flag', '⚠': 'warn',
+  '📏': 'ruler', '🎂': 'cake', '👕': 'shirt', '🎙': 'mic', '🎤': 'mic', '📖': 'book', '📚': 'book', '👁': 'eye', '🔗': 'link', '🔎': 'search', '🔍': 'search',
+  '🔢': 'hash', '🔥': 'fire', '✋': 'hand', '🟥': 'card', '🟨': 'card', '🔴': 'dot', 'ⓘ': 'info', '🧑‍⚖️': 'user', '🧮': 'hash', '🕊': 'spark', '😕': 'info', '🏀': 'bball', '🎾': 'tennis', '🏐': 'vball', '🏎': 'car', '🏈': 'ball', '⚾': 'ball', '🏒': 'ball', '🤾': 'ball', '📼': 'tv',
+};
+const svgI = k => `<svg class="ui-i ui-${k}" viewBox="0 0 24 24" aria-hidden="true">${ICP[k]}</svg>`;
+const EMO_RE = /^\s*((?:\p{Extended_Pictographic}|[Ⓜⓘ✓✕＋])(?:️|‍(?:\p{Extended_Pictographic}|♀|♂)️?|\p{Emoji_Modifier})*)\s*/u;
+const IC_SEL = '.card>h2, .card h2>span:first-child, .seg>a, .seg>button, .chips>a, .chips>button, .authtabs>button, .btn, .cbtn, .linkbtn, .inforow .ic, .setrow>span, .setsec>summary, details>summary, .lrow .nm>b, .empty, .gamesbar a, .tabbtn, .adminlink>span, h3, .datebar .cal, .langcur>span, .slic, .form-block>label, .tvtag, .profact .btn, .tstats>span, .board .bi, .form-block>.hint, .setsec>summary>span, .gamesbar>a>span';
+const icDone = new WeakSet();
+function iconize(root = document) {
+  for (const el of root.querySelectorAll(IC_SEL)) {
+    if (icDone.has(el) || el.closest('.post, .msg, .bub, .bubbody, .pbody, .dmrow, .cmt, [data-noicon]')) continue;
+    icDone.add(el);
+    const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n; while ((n = tw.nextNode()) && !n.textContent.trim());
+    if (!n) continue;
+    const m = n.textContent.match(EMO_RE); if (!m) continue;
+    const key = EMO[m[1]] || EMO[m[1].replace(/️/g, '')] || EMO[[...m[1]][0]];
+    if (key === 'star') continue; // favourite stars keep their own look
+    if (key === 'dot') { n.textContent = n.textContent.slice(m[0].length); n.parentNode.insertBefore(Object.assign(document.createElement('i'), { className: 'ui-dot' }), n); continue; } // 🔴 → a pulsing live dot
+    let rest = n.textContent.slice(m[0].length), m2; while ((m2 = rest.match(EMO_RE))) rest = rest.slice(m2[0].length); // "🌐 🌐 Dil" → one icon
+    n.textContent = rest;
+    if (key) n.parentNode.insertBefore(document.createRange().createContextualFragment(svgI(key)), n);
+    if (el.classList.contains('ic') && !n.textContent.trim() && !key) el.textContent = '';
+  }
+}
+{
+  let icRaf = 0;
+  const run = () => { icRaf = 0; iconize(document); };
+  new MutationObserver(() => { if (!icRaf) icRaf = requestAnimationFrame(run); }).observe(document.documentElement, { childList: true, subtree: true });
+  addEventListener('DOMContentLoaded', run);
+}
+// ---- empty pages: a soft icon tile, one sentence and (when there is one) the next step
+const emptyState = (icon, text, actions = '') => `<div class="empty es"><span class="esic">${svgI(icon)}</span><div class="estx">${text}</div>${actions ? `<div class="esact">${actions}</div>` : ''}</div>`;
+
 // [slug, official name, ESPN logo number, has a standings table]. Official names are the same in
 // every language; the country/region label beside them is translated (t('cc.*')).
 const GROUPS = [
@@ -295,7 +407,7 @@ const sportSvg = s => SPORT_SVG[s] ? `<svg viewBox="0 0 24 24" aria-hidden="true
 const sportBar = () => scrollBar(`<div class="sportbar">${SPORTS.filter(x => sportShown(x[0])).map(([s, ic, k]) => `<button class="${s === curSport ? 'on' : ''}" data-sport="${s}"><span>${sportSvg(s) || ic}</span>${t(k)}</button>`).join('')}</div>`);
 
 // ---- goal effects: a goal replaces the score for a few seconds with an animation (and a sound) ----
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 let fx = { anim: true, sound: true, vib: true, voice: false, vol: 1, mute: {}, ...store.get('fx', {}) };
 fx.mute ||= {}; if (!(fx.vol >= 0 && fx.vol <= 1)) fx.vol = 1;
 // the phone's text-to-speech "Gooool" sounded robotic: off for everybody once (it can be switched back on in Settings)
@@ -736,9 +848,12 @@ async function otherSportHtml(sport, day, extra = false) {
 }
 
 // favourite team playing right now (or later today): a big score card on top of the match list
+// "kick-off in 2:14:05" on the match-day card, ticking every second
+const cdText = iso => { const ms = new Date(iso) - Date.now(); if (ms <= 0) return t('md.now'); const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return t('md.in') + ' ' + (h ? h + ':' : '') + String(m).padStart(h ? 2 : 1, '0') + ':' + String(x).padStart(2, '0'); };
+setInterval(() => { for (const el of document.querySelectorAll('[data-cd]')) el.textContent = cdText(el.dataset.cd); }, 1000);
 function liveHero(rows) {
   const live = rows.filter(([e]) => e.status?.type?.state === 'in');
-  const soon = rows.filter(([e]) => e.status?.type?.state === 'pre' && new Date(e.date) - Date.now() < 6 * 3600e3 && new Date(e.date) > Date.now()).slice(0, 1);
+  const soon = rows.filter(([e]) => e.status?.type?.state === 'pre' && new Date(e.date) - Date.now() < 20 * 3600e3 && new Date(e.date) > Date.now()).sort((x, y) => new Date(x[0].date) - new Date(y[0].date)).slice(0, 1);
   const pick = (live.length ? live : soon).slice(0, 3);
   if (!pick.length) return '';
   return pick.map(([ev, lg]) => {
@@ -746,8 +861,9 @@ function liveHero(rows) {
     const evs = (comp.details || []).filter(d => d.scoringPlay || d.redCard).slice(-1)[0];
     const lastEv = evs ? `${evs.redCard ? '🟥' : '⚽'} ${esc(evs.clock?.displayValue || '')} ${esc(evs.athletesInvolved?.[0]?.displayName || evs.athletesInvolved?.[0]?.shortName || '')}` : '';
     const side = c => `<div class="lhs">${img(c.team.id, 'big', lg)}<b>${esc(c.team.shortDisplayName || c.team.displayName)}</b></div>`;
-    return `<a class="card livehero ${isLive ? 'on' : ''}" href="#/match/${lg}/${ev.id}"><div class="lhtop">${isLive ? `<span class="lvpulse"></span> ${t('lh.live')}` : `⏰ ${t('lh.soon')}`} · ${esc(lname(leagueOf(lg)) || ev.league?.name || '')}</div>
-      <div class="lhrow">${side(h)}<div class="lhmid"><div class="lhsc">${isLive ? `${esc(scoreOf(h))} – ${esc(scoreOf(a))}` : esc(hm(ev.date))}</div><div class="lhmin">${isLive ? liveHtml(s) : esc(dshort(ev.date))}</div></div>${side(a)}</div>
+    const hc = fxCol(h.team.color, '#2563eb'), ac = fxCol(a.team.color && a.team.color !== h.team.color ? a.team.color : a.team.alternateColor, '#e5484d');
+    return `<a class="card livehero mday ${isLive ? 'on' : ''}" style="--hc:${hc};--ac:${ac}" href="#/match/${lg}/${ev.id}"><div class="lhtop">${isLive ? `<span class="lvpulse"></span> ${t('lh.live')}` : t('md.today')} · ${esc(lname(leagueOf(lg)) || ev.league?.name || '')}</div>
+      <div class="lhrow">${side(h)}<div class="lhmid"><div class="lhsc">${isLive ? `${esc(scoreOf(h))} – ${esc(scoreOf(a))}` : esc(hm(ev.date))}</div><div class="lhmin">${isLive ? liveHtml(s) : `<span class="lhcd" data-cd="${esc(ev.date)}">${cdText(ev.date)}</span>`}</div></div>${side(a)}</div>
       ${lastEv ? `<div class="lhlast">${lastEv}</div>` : ''}</a>`;
   }).join('');
 }
@@ -1879,15 +1995,27 @@ function srchSub(c, kind, sport, lg) {
     .replace(/\b(club|team|player|footballer|soccer|football|basketball|volleyball|handball|tennis|baseball|hockey)\b/ig, '').replace(/\s*·\s*(?=·|$)/g, '').replace(/^\s*·\s*/, '').replace(/\s{2,}/g, ' ').trim();
   return txt || (sp ? t(sp) : '');
 }
+// the last searches (on this phone), shown while the box is empty
+const rememberSearch = q => { const l = store.get('srecent', []).filter(x => normName(x) !== normName(q)); l.unshift(q); store.set('srecent', l.slice(0, 8)); };
+const recentSearchHtml = () => { const l = store.get('srecent', []); return l.length ? `<div class="card"><h2>🕒 ${t('search.recent')}<button class="linkbtn" data-srecent-clear style="margin-left:auto">${t('search.clear')}</button></h2><div class="srecent">${l.map(q => `<button class="chipq" data-sq="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>` : ''; };
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-sq]'); if (b) { const i = document.getElementById('sq'); if (i) { i.value = b.dataset.sq; runSearch(b.dataset.sq); } return; }
+  if (e.target.closest('[data-srecent-clear]')) { store.set('srecent', []); const box = document.getElementById('sres'); if (box) box.innerHTML = emptyState('search', t('search.hint')); }
+});
 async function runSearch(q) {
   const box = document.getElementById('sres'); if (!box) return;
   q = q.trim();
-  if (q.length < 2) { box.innerHTML = `<div class="empty">${t('search.hint')}</div>`; return; }
+  if (q.length < 2) { box.innerHTML = recentSearchHtml() || emptyState('search', t('search.hint')); return; }
   const tok = ++searchTok;
   box.innerHTML = '<div class="spin"></div>';
   const call = type => get(`${ESPN_Q}query=${encodeURIComponent(q)}&limit=12&type=${type}`, 120000).then(j => (j.results || []).find(r => r.type === type)?.contents || []).catch(() => []);
-  const [teams, players] = await Promise.all([call('team'), call('player')]);
+  const nq = normName(q);
+  const leagues = LEAGUES.filter(l => normName(lname(l)).includes(nq) || normName(l.id).includes(nq)).slice(0, 6);
+  const [teams, players, users, topics] = await Promise.all([call('team'), call('player'),
+    workerBase() && q.length >= 3 ? capi('GET', '/users?q=' + encodeURIComponent(q)).then(r => r.users || []).catch(() => []) : [],
+    workerBase() ? capi('GET', '/psearch?q=' + encodeURIComponent(q)).then(r => r.posts || []).catch(() => []) : []]);
   if (tok !== searchTok) return;
+  rememberSearch(q);
   const row = (c, kind) => {
     const id = uidId(c.uid, kind === 'player' ? 'a' : 't'); if (!id) return '';
     const sport = c.sport || 'soccer', lg = c.defaultLeagueSlug || c.league || (sport === 'soccer' ? 'all' : '');
@@ -1899,14 +2027,18 @@ async function runSearch(q) {
     return ok ? `<div class="lrow"><a href="${href}">${inner}</a></div>` : `<div class="lrow"><span class="srow">${inner}</span></div>`;
   };
   const sec = (title, list, kind) => list.length ? `<div class="card"><h2>${title} (${list.length})</h2>${list.map(c => row(c, kind)).join('')}</div>` : '';
-  box.innerHTML = sec(t('search.teams'), teams, 'team') + sec(t('search.players'), players, 'player') + '<div id="sleg"></div>' || `<div class="empty">${t('search.none')}</div>`;
+  const lgSec = leagues.length ? `<div class="card"><h2>🏆 ${t('search.leagues')}</h2>${leagues.map(l => `<div class="lrow"><a href="#/league/${esc(l.id)}">${lgIcon(l.id)}<span class="nm">${esc(lname(l))}<small class="hint" style="display:block">${esc(ctryName(l.country || ''))}</small></span><span class="go">›</span></a></div>`).join('')}</div>` : '';
+  const usSec = users.length ? `<div class="card"><h2>👥 ${t('search.members')}</h2>${users.slice(0, 6).map(u => `<div class="lrow"><a href="#/user/${encodeURIComponent(u.username)}">${avatar(u, 28)}<span class="nm">${nameHtml(u)}</span><span class="go">›</span></a></div>`).join('')}</div>` : '';
+  const tpSec = topics.length ? `<div class="card"><h2>💬 ${t('search.topics')}</h2>${topics.map(p => `<div class="lrow"><a href="#/post/${p.id}"><span class="nm">${esc(p.title)}<small class="hint" style="display:block">${esc(p.username)} · ${ago(p.created)} · ${p.n} ${t("c.comments").toLocaleLowerCase(LOCALE())}</small></span><span class="go">›</span></a></div>`).join('')}</div>` : '';
+  const any = leagues.length || teams.length || players.length || users.length || topics.length;
+  box.innerHTML = any ? lgSec + sec(t('search.teams'), teams, 'team') + sec(t('search.players'), players, 'player') + '<div id="sleg"></div>' + usSec + tpSec : '<div id="sleg"></div>' + emptyState('search', t('search.none'));
   // former players and legends (Wikidata): everyone ESPN no longer lists
   const have = new Set(players.map(c => normName(c.displayName)));
   const leg = (await wdSearch(q).catch(() => [])).filter(x => !have.has(normName(x.label)));
   if (tok !== searchTok) return;
   const lb = document.getElementById('sleg');
   if (lb && leg.length) lb.innerHTML = `<div class="card"><h2>🏛️ ${t('lg.title')} (${leg.length})</h2>${leg.map(x => `<div class="lrow"><a href="#/legend/${x.id}"><span class="srcpic">⚽</span><span class="nm">${esc(x.label)}<small class="hint" style="display:block">${esc(x.description || '')}</small></span><span class="go">›</span></a></div>`).join('')}</div>`;
-  else if (!teams.length && !players.length) box.innerHTML = `<div class="empty">${t('search.none')}</div>`;
+  else if (!teams.length && !players.length && !users.length && !topics.length && !leagues.length) box.innerHTML = emptyState('search', t('search.none'));
 }
 
 // ---- legends / former players: Wikidata (career with years, apps and goals, honours) + the Wikipedia summary
@@ -1989,7 +2121,7 @@ async function viewLegend(qid) {
 async function viewSearch(q0) {
   setTitle(t('search.title'));
   if (q0) setTimeout(() => { const el = document.getElementById('sq'); if (el && !el.value) { el.value = decodeURIComponent(q0); runSearch(el.value); } }, 0);
-  return `<div class="card"><div class="form-block sqrow"><input id="sq" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('search.ph'))}"><button class="micbtn" data-voice aria-label="${esc(t('vs.mic'))}">🎤</button></div><div class="hint" id="vs-msg" style="padding:0 14px 8px"></div></div><div id="sres"><div class="empty">${t('search.hint')}</div></div>`;
+  return `<div class="card"><div class="form-block sqrow"><input id="sq" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" placeholder="${esc(t('search.ph'))}"><button class="micbtn" data-voice aria-label="${esc(t('vs.mic'))}">🎤</button></div><div class="hint" id="vs-msg" style="padding:0 14px 8px"></div></div><div id="sres">${recentSearchHtml() || emptyState('search', t('search.hint'))}</div>`;
 }
 document.addEventListener('input', e => {
   if (e.target.id !== 'sq') return;
@@ -2280,7 +2412,8 @@ async function viewFavs() {
   const subUrl = subT.length && workerBase() ? `${workerBase()}/ics?t=${subT.join(',')}&lang=${LANG}` : '';
   const calAll = favs.length || xfavs.length ? `<div class="card"><h2>📅 ${t('cal.title')}</h2>${subUrl ? `<div class="form-block"><a class="btn" href="${esc(subUrl.replace(/^https:/, 'webcal:'))}">🔄 ${t('cal.sub')}</a><div class="hint">${t('cal.subHint')}</div><button class="btn ghost" data-copy="${esc(subUrl)}">📋 ${t('cal.copy')}</button></div>` : ''}<div class="form-block"><button class="btn ghost" data-ics-all>📥 ${t('o.calAll')}</button></div></div>` : '';
   const rooms = espnF.length ? `<div class="card"><h2>💬 ${t('room.mine')}</h2>${espnF.map(f => `<a class="lrow" href="#/room/${esc(f.league)}/${esc(f.id)}/${encodeURIComponent(f.name)}">${img(f.id, '', f.league)}<span class="nm" style="padding:10px 12px">${esc(f.name)} ${t('room.tab')}</span><span class="go">›</span></a>`).join('')}</div>` : '';
-  return sportBar() + rooms + (html || `<div class="empty">${other ? t('c.otherNote') : t('noFavs')}</div>`) + calAll;
+  const wkBtn = favs.some(f => /^\d+$/.test(String(f.id)) && sportOf(f.league) === 'soccer') ? `<div class="card wkcard"><div class="form-block"><b>${t('wk.title')}</b><div class="hint">${t('wk.hint')}</div><button class="btn" data-weekcard>📤 ${t('wk.btn')}</button></div></div>` : '';
+  return sportBar() + rooms + (html || emptyState('star', other ? t('c.otherNote') : t('noFavs'))) + wkBtn + calAll;
 }
 async function favCards(list) {
   const all = await Promise.all(list.map(f => teamEvents(f.id, f.league).then(e => ({ f, e })).catch(() => ({ f, e: { past: [], live: [], next: [] } }))));
@@ -2959,8 +3092,8 @@ async function viewProfile() {
   capi('GET', '/me').then(r => { if (acct && JSON.stringify(r.user) !== JSON.stringify(acct.user)) { acct.user = r.user; store.set('acct', acct); if (location.hash === '#/profile') render(true); } }).catch(() => {});
   const u = acct.user, me = { username: u.username, role: u.role, color: u.color, fav_id: u.fav?.id, fav_league: u.fav?.league, fav_name: u.fav?.name };
   // e-mail of the account: shown when set, otherwise a box to add one (needed for "forgot password")
-  const mailBox = lazy(capi('GET', '/me').then(r => !r.mail ? '' : r.email
-    ? `<div class="card"><div class="inforow"><span class="ic">📧</span><span class="k">${t('em.email')}</span><span class="v">${esc(r.email)} ✓</span></div></div>`
+  const mailBox = lazy(capi('GET', '/me').then(r => !r.mail ? badgeShowcase(r) : r.email
+    ? `${badgeShowcase(r)}<div class="card"><div class="inforow"><span class="ic">📧</span><span class="k">${t('em.email')}</span><span class="v">${esc(r.email)} ✓</span></div></div>`
     : `<div class="card"><h2>📧 ${t('em.addTitle')}</h2><div class="form-block"><div class="hint">${t('em.addHint')}</div><input id="m-mail" type="email" autocomplete="email" autocapitalize="off" maxlength="120" placeholder="${esc(t('em.email'))}"><button class="btn ghost" data-mailcode="attach">✉️ ${t('em.send')}</button><input id="m-code" inputmode="numeric" maxlength="6" placeholder="${esc(t('em.code'))}"><button class="btn" data-mailattach>${t('em.save')}</button><div class="hint" id="m-msg"></div></div></div>`).catch(() => ''));
   const swatches = AVATAR_COLORS.map(c => `<button class="swatch ${c === (u.color || hashColor(u.username)) ? 'on' : ''}" style="background:${c}" data-color="${c}" aria-label="${c}"></button>`).join('');
   const FLs = favListOf(u);
@@ -3049,8 +3182,22 @@ let themeMode = store.get('theme', 'auto');
 // team colours: the app takes the colours of a favourite team (ESPN's team colour + alternate colour)
 let teamTheme = store.get('teamTheme', null); // { id, league, name, c1, c2 }
 const lum = hex => { const n = parseInt(String(hex || '').replace('#', ''), 16); if (!Number.isFinite(n)) return .5; const [r, g, b] = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+// "by daylight": dark from sunset to sunrise, worked out for the phone's time zone (NOAA approximation)
+const TZ_LON = { 'Europe/Istanbul': [41, 29], 'Europe/Berlin': [52.5, 13.4], 'Europe/London': [51.5, -0.1], 'Europe/Paris': [48.9, 2.35], 'Europe/Madrid': [40.4, -3.7], 'Europe/Moscow': [55.75, 37.6], 'Europe/Warsaw': [52.2, 21], 'Asia/Baghdad': [36.2, 44] };
+function sunTimes(d = new Date()) {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone, [lat, lon] = TZ_LON[tz] || [45, -d.getTimezoneOffset() / 4];
+  const rad = Math.PI / 180, n = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5);
+  const g = 2 * Math.PI / 365 * (n - 1);
+  const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+  const dec = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g);
+  const ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(dec)) - Math.tan(lat * rad) * Math.tan(dec)) / rad;
+  const utcMid = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return { rise: new Date(utcMid + (720 - 4 * (lon + ha) - eq) * 60e3), set: new Date(utcMid + (720 - 4 * (lon - ha) - eq) * 60e3) };
+}
+const sunDark = () => { try { const { rise, set } = sunTimes(), n = new Date(); return n < rise || n > set; } catch { const h = new Date().getHours(); return h < 7 || h >= 19; } };
+setInterval(() => { if (themeMode === 'sun') { const want = sunDark() ? 'dark' : 'light'; if (document.documentElement.dataset.theme !== want) applyTheme(); } }, 60000);
 const applyTheme = () => {
-  const dark = themeMode === 'dark' || (themeMode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  const dark = themeMode === 'dark' || (themeMode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches) || (themeMode === 'sun' && sunDark());
   const root = document.documentElement;
   root.dataset.theme = dark ? 'dark' : 'light';
   if (teamTheme?.c1) {
@@ -3079,7 +3226,7 @@ async function setTeamTheme(v) {
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => themeMode === 'auto' && applyTheme()); } catch {}
 applyTheme();
 const themeCard = () => { const tf = favs.filter(f => sportOf(f.league) === 'soccer' && !String(f.id).startsWith('tff:'));
-  return `<div class="card"><h2>🎨 ${t('theme.title')}</h2><div class="langs">${['auto', 'light', 'dark'].map(m =>
+  return `<div class="card"><h2>🎨 ${t('theme.title')}</h2><div class="langs l4">${['auto', 'sun', 'light', 'dark'].map(m =>
   `<button class="langbtn ${m === themeMode ? 'on' : ''}" data-theme-set="${m}">${t('theme.' + m)}</button>`).join('')}</div>
   <div class="form-block"><label>⚽ ${t('tt.title')}<select data-team-theme><option value="">${t('tt.off')}</option>${tf.map(f => `<option value="${esc(f.league)}|${esc(f.id)}" ${teamTheme && String(teamTheme.id) === String(f.id) ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label>${tf.length ? '' : `<div class="hint">${t('tt.needFav')}</div>`}</div></div>`; };
 
@@ -3156,6 +3303,7 @@ async function pollNotifs(force) {
   try { const r = await capi('GET', '/notifs?count=1'); notifCount = r.unread || 0; dmUnread = r.dm || 0; } catch { return; }
   const tab = document.querySelector('#tabs a[data-tab="forum"]'); if (!tab) return;
   tab.querySelector('.tbadge')?.remove();
+  paintDmBtn();
   const all = notifCount + dmUnread;
   if (all) tab.insertAdjacentHTML('beforeend', `<i class="tbadge">${all > 9 ? '9+' : all}</i>`);
 }
@@ -3209,7 +3357,7 @@ async function teamForumHtml(league, id) {
   return composer + (posts.length ? `<div class="card">${posts.map(p => postRow(p, false)).join('')}</div>` : `<div class="empty">${t('cat.noTeamPosts')}</div>`);
 }
 
-const BADGE_ICON = { admin: '🛡️', weekly: '🏆', sharp: '🎯', writer: '✍️', chatty: '💬', veteran: '🎖️' };
+const BADGE_ICON = { admin: '🛡️', weekly: '🏆', sharp: '🎯', sniper: '🏅', oracle: '🧠', streak7: '🔥', streak30: '🔥', writer: '✍️', chatty: '💬', veteran: '🎖️' };
 const badgeRow = list => (list && list.length) ? `<div class="badges">${list.map(b => `<span class="bdg" title="${esc(t('bdg.' + b + '.d'))}">${BADGE_ICON[b] || '⭐'} ${t('bdg.' + b)}</span>`).join('')}</div>` : '';
 const likeBtn = (kind, m) => `<button class="cbtn txt like ${m.liked ? 'on' : ''}" data-cact="like" data-kind="${kind}" data-id="${m.id}" aria-label="${t('c.like')}">${m.liked ? '♥' : '♡'} <span>${m.likes || 0}</span></button>`;
 const delBtn = (kind, id, owner) => (acct && (isAdminUser() || acct.user.username === owner)) ? `<button class="cbtn txt" data-cact="del" data-kind="${kind}" data-id="${id}" aria-label="${t('c.delete')}">🗑 ${t('c.delete')}</button>` : '';
@@ -3411,6 +3559,7 @@ const afterRender = () => {
   paintProfileTab();
   fillBadges(); fillLeagueLogos(); fillValues();
   { const ab = document.getElementById('adminbtn'); if (ab) ab.hidden = !isAdminUser(); }
+  paintDmBtn();
   pollNotifs();
   const sq = document.getElementById('sq'); if (sq && !sq.value) sq.focus();
   const on = document.querySelector('.sportbar button.on'); if (on) { const bar = on.parentElement; bar.scrollLeft = Math.max(0, on.offsetLeft - bar.clientWidth / 2 + on.offsetWidth / 2); }
@@ -4002,6 +4151,9 @@ addEventListener('hashchange', () => render());
 $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/matches'));
 $('#refresh').onclick = () => { cache.clear(); render(); };
 $('#searchbtn').onclick = () => { location.hash = '#/search'; };
+// header: messages with the unread count, for signed-in members
+function paintDmBtn() { const b = document.getElementById('dmbtn'); if (!b) return; b.hidden = !acct; const i = b.querySelector('.hbadge'); if (i) { i.hidden = !dmUnread; i.textContent = dmUnread > 9 ? '9+' : dmUnread; } b.setAttribute('aria-label', t('dm.title') || 'DM'); }
+$('#dmbtn').onclick = () => { location.hash = '#/dm'; };
 $('#adminbtn').onclick = () => { location.hash = '#/admin'; };
 document.addEventListener('click', async e => {
   // tabs and round arrows inside a league page don't pile up in history
@@ -4230,114 +4382,68 @@ if ('serviceWorker' in navigator) {
   setTimeout(() => sessionStorage.removeItem('gx-reloaded'), 20000);
 }
 
-// ---- empty pages: a soft icon tile, one sentence and (when there is one) the next step
-const emptyState = (icon, text, actions = '') => `<div class="empty es"><span class="esic">${svgI(icon)}</span><div class="estx">${text}</div>${actions ? `<div class="esact">${actions}</div>` : ''}</div>`;
-// ---- UI icons: the emoji in headings, tabs, buttons and info rows are swapped for one consistent set of line icons
-// (Lucide-style, 24×24, stroke = currentColor). Emoji inside user text (posts, chat, names) are never touched.
-const ICP = {
-  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
-  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
-  stadium: '<ellipse cx="12" cy="8" rx="9" ry="3"/><path d="M3 8v8c0 1.7 4 3 9 3s9-1.3 9-3V8"/><path d="M8 18.6v-4M16 18.6v-4M12 19v-4"/>',
-  tv: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="m17 2-5 5-5-5"/>',
-  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
-  mute: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/>',
-  vol: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
-  ball: '<circle cx="12" cy="12" r="10"/><path d="m12 7 4.2 3-1.6 5H9.4l-1.6-5z"/><path d="M12 2v5M21.5 9.5l-5.3.5M17.8 20l-3.2-5M6.2 20l3.2-5M2.5 9.5l5.3.5"/>',
-  key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
-  spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
-  help: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
-  mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
-  refresh: '<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',
-  pen: '<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
-  check: '<circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/>',
-  tick: '<path d="M20 6 9 17l-5-5"/>',
-  x: '<path d="M18 6 6 18M6 6l12 12"/>',
-  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-  share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/>',
-  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-  play: '<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/>',
-  scale: '<path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>',
-  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
-  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
-  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
-  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
-  trend: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
-  clip: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
-  down: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>',
-  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>',
-  news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/>',
-  bars: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
-  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
-  award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 12.9 17 22l-5-3-5 3 1.5-9.1"/>',
-  star: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>',
-  game: '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><rect x="2" y="6" width="20" height="12" rx="6"/>',
-  bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2"/>',
-  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1"/>',
-  trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
-  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
-  money: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
-  palette: '<circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c1 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16a6 6 0 0 0 6-6c0-4.9-4.5-8.4-10-8.4"/>',
-  phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
-  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
-  flag: '<path d="M4 22V4s1-1 4-1 5 2 8 2 4-1 4-1v11s-1 1-4 1-5-2-8-2-4 1-4 1"/>',
-  warn: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3M12 9v4M12 17h.01"/>',
-  ruler: '<path d="M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4M7.5 10.5l2-2M10.5 13.5l2-2M13.5 16.5l2-2"/>',
-  cake: '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8M4 16s1.5-1 4-1 4 2 8 2 4-1 4-1M2 21h20M7 8v3M12 8v3M17 8v3M7 4h.01M12 4h.01M17 4h.01"/>',
-  shirt: '<path d="M20.4 3.5 16 2a4 4 0 0 1-8 0L3.6 3.5a2 2 0 0 0-1.3 2.2l.6 3.5a1 1 0 0 0 1 .8H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.1a1 1 0 0 0 1-.8l.6-3.5a2 2 0 0 0-1.3-2.2"/>',
-  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>',
-  book: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
-  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7"/><circle cx="12" cy="12" r="3"/>',
-  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
-  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
-  brief: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
-  timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/>',
-  hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
-  fire: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.3 1.4 1.2 2.7 2.5 2.7"/>',
-  med: '<path d="M8 21h8M12 3v18M3 7h18M6 7l-3 6h6zM18 7l-3 6h6z"/>',
-  hand: '<path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
-  card: '<rect x="6" y="3" width="12" height="18" rx="2"/>',
-  dot: '<circle cx="12" cy="12" r="5"/>',
-  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
-  bball: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2v20M4.9 4.9a10 10 0 0 1 0 14.2M19.1 4.9a10 10 0 0 0 0 14.2"/>',
-  tennis: '<circle cx="12" cy="12" r="10"/><path d="M6 3.5a10 10 0 0 1 0 17M18 3.5a10 10 0 0 0 0 17"/>',
-  vball: '<circle cx="12" cy="12" r="10"/><path d="M12 12a8 8 0 0 0-7.6-5.5M12 12a8 8 0 0 0 7.6 4.6M12 12a8 8 0 0 1 0 10M12 2a8 8 0 0 1 4 9"/>',
-  car: '<path d="M5 17h14v-4l-2-5H7l-2 5zM5 13h14"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/>',
-};
-const EMO = {
-  '📅': 'cal', '🗓': 'cal', '🏆': 'trophy', '🏟': 'stadium', '🏛': 'stadium', '📺': 'tv', '📼': 'tv', '🔔': 'bell', '🔇': 'mute', '🔊': 'vol',
-  '⚽': 'ball', '🔑': 'key', '✨': 'spark', '❓': 'help', '✉': 'mail', '📧': 'mail', '📩': 'mail', '📨': 'mail', '🔁': 'refresh', '🔄': 'refresh',
-  '✏': 'pen', '✍': 'pen', '📝': 'pen', '✅': 'check', '✓': 'tick', '❌': 'x', '✕': 'x', '🔐': 'lock', '🔒': 'lock', '📤': 'share', '📲': 'phone', '📱': 'phone',
-  '💬': 'chat', '🎬': 'play', '▶': 'play', '⚖': 'scale', '🎯': 'target', '👥': 'users', '🤝': 'users', '👤': 'user', '🧑': 'user', '⛔': 'ban', '🚑': 'med',
-  '📈': 'trend', '📋': 'clip', '📥': 'down', '➕': 'plus', '＋': 'plus', '🛡': 'shield', '📰': 'news', '📊': 'bars', '🗳': 'bars', '🌍': 'globe', '🌐': 'globe',
-  '🏅': 'award', '🎖': 'award', '🥇': 'award', '🥈': 'award', '🥉': 'award', '⭐': 'star', '★': 'star', '🎮': 'game', '🧠': 'bulb', '⚙': 'gear', '🛠': 'gear',
-  '🗑': 'trash', '⏳': 'clock', '⏰': 'clock', '⏱': 'timer', '💶': 'money', '💼': 'brief', '🎨': 'palette', '📍': 'pin', '📌': 'pin', '🚩': 'flag', '⚠': 'warn',
-  '📏': 'ruler', '🎂': 'cake', '👕': 'shirt', '🎙': 'mic', '🎤': 'mic', '📖': 'book', '📚': 'book', '👁': 'eye', '🔗': 'link', '🔎': 'search', '🔍': 'search',
-  '🔢': 'hash', '🔥': 'fire', '✋': 'hand', '🟥': 'card', '🟨': 'card', '🔴': 'dot', 'ⓘ': 'info', '🧑‍⚖️': 'user', '🧮': 'hash', '🕊': 'spark', '😕': 'info', '🏀': 'bball', '🎾': 'tennis', '🏐': 'vball', '🏎': 'car', '🏈': 'ball', '⚾': 'ball', '🏒': 'ball', '🤾': 'ball', '📼': 'tv',
-};
-const svgI = k => `<svg class="ui-i ui-${k}" viewBox="0 0 24 24" aria-hidden="true">${ICP[k]}</svg>`;
-const EMO_RE = /^\s*((?:\p{Extended_Pictographic}|[Ⓜⓘ✓✕＋])(?:️|‍(?:\p{Extended_Pictographic}|♀|♂)️?|\p{Emoji_Modifier})*)\s*/u;
-const IC_SEL = '.card>h2, .card h2>span:first-child, .seg>a, .seg>button, .chips>a, .chips>button, .authtabs>button, .btn, .cbtn, .linkbtn, .inforow .ic, .setrow>span, .setsec>summary, details>summary, .lrow .nm>b, .empty, .gamesbar a, .tabbtn, .adminlink>span, h3, .datebar .cal, .langcur>span, .slic, .form-block>label, .tvtag, .profact .btn, .tstats>span, .board .bi, .form-block>.hint, .setsec>summary>span, .gamesbar>a>span';
-const icDone = new WeakSet();
-function iconize(root = document) {
-  for (const el of root.querySelectorAll(IC_SEL)) {
-    if (icDone.has(el) || el.closest('.post, .msg, .bub, .bubbody, .pbody, .dmrow, .cmt, [data-noicon]')) continue;
-    icDone.add(el);
-    const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n; while ((n = tw.nextNode()) && !n.textContent.trim());
-    if (!n) continue;
-    const m = n.textContent.match(EMO_RE); if (!m) continue;
-    const key = EMO[m[1]] || EMO[m[1].replace(/️/g, '')] || EMO[[...m[1]][0]];
-    if (key === 'star') continue; // favourite stars keep their own look
-    if (key === 'dot') { n.textContent = n.textContent.slice(m[0].length); n.parentNode.insertBefore(Object.assign(document.createElement('i'), { className: 'ui-dot' }), n); continue; } // 🔴 → a pulsing live dot
-    let rest = n.textContent.slice(m[0].length), m2; while ((m2 = rest.match(EMO_RE))) rest = rest.slice(m2[0].length); // "🌐 🌐 Dil" → one icon
-    n.textContent = rest;
-    if (key) n.parentNode.insertBefore(document.createRange().createContextualFragment(svgI(key)), n);
-    if (el.classList.contains('ic') && !n.textContent.trim() && !key) el.textContent = '';
-  }
+// ---- achievements: every badge, earned ones in colour, the others greyed with how far along you are
+const BD_SHOW = [['sharp', 'target', 'exact', 3], ['sniper', 'award', 'exact', 10], ['oracle', 'bulb', 'preds', 50], ['streak7', 'fire', 'streak', 7], ['streak30', 'fire', 'streak', 30], ['writer', 'pen', 'posts', 5], ['chatty', 'chat', 'messages', 50], ['veteran', 'shield', 'days', 90], ['weekly', 'trophy', '', 0]];
+function badgeShowcase(r) {
+  const got = new Set(r?.user?.badges || []), p = r?.progress || {};
+  const n = BD_SHOW.filter(([k]) => got.has(k)).length;
+  return `<div class="card"><h2>🏅 ${t('bd.title')} <small class="hint" style="margin-left:auto">${n} / ${BD_SHOW.length}</small></h2><div class="bdgrid">${BD_SHOW.map(([k, ic, pk, goal]) => {
+    const on = got.has(k), v = pk ? Math.min(p[pk] || 0, goal) : 0;
+    return `<div class="bdtile ${on ? 'on' : ''}" title="${esc(t('bdg.' + k + '.d'))}"><span class="bdic">${svgI(ic)}</span><b>${t('bdg.' + k)}</b><small>${on ? '✓ ' + t('bd.got') : pk ? `${v} / ${goal}` : t('bdg.' + k + '.d')}</small>${!on && pk ? `<i class="bdbar"><i style="width:${v / goal * 100}%"></i></i>` : ''}</div>`;
+  }).join('')}</div></div>`;
 }
-{
-  let icRaf = 0;
-  const run = () => { icRaf = 0; iconize(document); };
-  new MutationObserver(() => { if (!icRaf) icRaf = requestAnimationFrame(run); }).observe(document.documentElement, { childList: true, subtree: true });
-  addEventListener('DOMContentLoaded', run);
+
+// ---- "my week" picture: the followed teams' results of the last 7 days and my prediction points, to share
+async function weekCard(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const now = Date.now(), from = now - 7 * 864e5;
+    const fs = favs.filter(f => /^\d+$/.test(String(f.id)) && sportOf(f.league) === 'soccer').slice(0, 6);
+    const rows = (await Promise.all(fs.map(async f => {
+      const te = await teamEvents(f.id, f.league).catch(() => null);
+      const games = (te?.past || []).filter(e => { const d = new Date(e.date); return d >= from && d <= now; }).map(e => {
+        const cs = e.competitions?.[0]?.competitors || [], me = cs.find(c => c.team?.id == f.id), op = cs.find(c => c.team?.id != f.id);
+        if (!me || !op || me.score == null) return null;
+        const a = +(me.score.value ?? me.score), b = +(op.score.value ?? op.score);
+        return { r: a > b ? 'W' : a < b ? 'L' : 'D', s: `${a}-${b}`, op: op.team.shortDisplayName || op.team.displayName, home: me.homeAway === 'home' };
+      }).filter(Boolean);
+      return { f, games };
+    }))).filter(x => x.games.length);
+    let pts = null;
+    if (acct) { const d = await capi('GET', '/leaderboard?scope=week').catch(() => null); const me = d?.board?.find(x => x.username === acct.user.username); pts = me ? me.pts : 0; }
+    const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const x = cv.getContext('2d');
+    const acc = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2563eb';
+    const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0b1020'); g.addColorStop(1, '#141b2e'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.fillStyle = acc; x.globalAlpha = .18; x.beginPath(); x.arc(W - 120, 120, 340, 0, Math.PI * 2); x.fill(); x.globalAlpha = 1;
+    const F = (w, s) => `${w} ${s}px Inter, system-ui, sans-serif`;
+    x.fillStyle = '#fff'; x.textAlign = 'left';
+    x.font = F(800, 64); x.fillText(t('wk.title'), 72, 150);
+    x.font = F(500, 32); x.fillStyle = '#9aa4b8'; x.fillText(`${fmtD(from, { day: 'numeric', month: 'long' })} – ${fmtD(now, { day: 'numeric', month: 'long' })}`, 72, 205);
+    let y = 290;
+    const col = { W: '#22c55e', D: '#f59e0b', L: '#ef4444' };
+    if (!rows.length) { x.font = F(500, 36); x.fillStyle = '#cbd5e1'; x.fillText(t('wk.none'), 72, y + 40); y += 120; }
+    for (const { f, games } of rows) {
+      if (y > H - 300) break;
+      x.fillStyle = 'rgba(255,255,255,.06)'; const bh = 70 + games.length * 58; x.beginPath(); x.roundRect(48, y, W - 96, bh, 28); x.fill();
+      x.fillStyle = '#fff'; x.font = F(700, 38); x.fillText(f.name, 84, y + 56);
+      const w = games.filter(z => z.r === 'W').length; x.font = F(600, 28); x.fillStyle = '#9aa4b8'; x.textAlign = 'right'; x.fillText(`${w}/${games.length} ${t('wk.wins')}`, W - 84, y + 54); x.textAlign = 'left';
+      games.slice(0, 5).forEach((z, i) => {
+        const yy = y + 100 + i * 58;
+        x.fillStyle = col[z.r]; x.beginPath(); x.roundRect(84, yy - 32, 44, 44, 10); x.fill();
+        x.fillStyle = '#fff'; x.font = F(800, 24); x.textAlign = 'center'; x.fillText(t('res.' + z.r), 106, yy - 2); x.textAlign = 'left';
+        x.font = F(700, 32); x.fillText(z.s, 150, yy); x.font = F(500, 30); x.fillStyle = '#cbd5e1'; x.fillText((z.home ? 'vs ' : '@ ') + z.op, 250, yy);
+      });
+      y += bh + 24;
+    }
+    if (pts != null) {
+      x.fillStyle = acc; x.beginPath(); x.roundRect(48, H - 250, W - 96, 120, 28); x.fill();
+      x.fillStyle = '#fff'; x.font = F(600, 32); x.fillText(t('wk.pred'), 84, H - 180); x.font = F(800, 56); x.textAlign = 'right'; x.fillText(`${pts} ${t('wk.pts')}`, W - 84, H - 168); x.textAlign = 'left';
+    }
+    x.fillStyle = '#9aa4b8'; x.font = F(600, 30); x.fillText('Grafondex Live Score', 72, H - 60);
+    const blob = await new Promise(ok => cv.toBlob(ok, 'image/png'));
+    const file = new File([blob], 'grafondex-hafta.png', { type: 'image/png' });
+    if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], text: t('wk.title') + ' · Grafondex Live Score' }).catch(() => {});
+    else { const u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = file.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+  } finally { if (btn) btn.disabled = false; }
 }
+document.addEventListener('click', e => { const b = e.target.closest('[data-weekcard]'); if (b) weekCard(b).catch(() => { b.disabled = false; }); });
