@@ -1111,6 +1111,12 @@ html[data-theme] .stbar small{font-size:10px;color:var(--muted);line-height:1}
 html[data-theme] .stbar em{position:static;font-style:normal;font-size:10px;font-weight:800;line-height:16px;height:16px;min-width:16px;border-radius:8px;text-align:center;color:var(--muted);opacity:.4}
 html[data-theme] .stbar em.on{background:color-mix(in srgb,#16a34a 18%,transparent);color:#16a34a;opacity:1;padding:0 3px}
 html[data-theme] .soc i .ui-i,html[data-theme] .socin i .ui-i{color:var(--bf,#fff)!important;stroke:var(--bf,#fff)}
+a.sqrow,a.scrow,a.plog{color:var(--text);text-decoration:none}
+.scrow{display:flex;align-items:center;gap:10px;padding:9px 14px}.scrow+.scrow{border-top:1px solid var(--line)}
+.scr{width:22px;text-align:center;font-size:13px;color:var(--muted)}.scg{min-width:28px;text-align:center;font-size:16px;font-weight:800;color:var(--accent)}
+.plog{display:flex;align-items:center;gap:10px;padding:9px 14px}.plog+.plog{border-top:1px solid var(--line)}.plog>small{width:52px;color:var(--muted);font-size:12px;flex:none}
+.plsc{font-size:13px;font-weight:700;min-width:34px;text-align:right}
+.bph.big{width:84px;height:84px}.bph.big .bno{min-width:26px;height:26px;line-height:26px;font-size:13px;border-radius:13px}
 .sqrow{display:flex;align-items:center;gap:12px;padding:9px 14px}.sqrow+.sqrow{border-top:1px solid var(--line)}
 .bph.sm{width:40px;height:40px;flex:none}.bph.sm .bno{min-width:18px;height:18px;line-height:18px;font-size:10px}
 .sqn{flex:1;min-width:0;display:flex;flex-direction:column}.sqn b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sqn small{color:var(--muted);font-size:12px}
@@ -1189,7 +1195,7 @@ html[data-tone="blue"] .sk{background:linear-gradient(90deg,#14306a 25%,#1d3c7c 
   <a href="#/profile" data-tab="profile"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></i><span>Profil</span></a>
   <a href="#/settings" data-tab="settings"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></i><span>Ayarlar</span></a>
 </nav>
-<script>(function(){var L=["tr","en","de","ru","ku","fr","es","pl"],s;try{s=JSON.parse(localStorage.getItem('lang'))}catch(e){}if(L.indexOf(s)<0){s=(navigator.language||'tr').slice(0,2).toLowerCase();if(L.indexOf(s)<0)s='tr'}document.write('<script src="i18n-'+s+'.js?v=86"><\/script>')})()</script>
-<script src="app.js?v=86"></script>
+<script>(function(){var L=["tr","en","de","ru","ku","fr","es","pl"],s;try{s=JSON.parse(localStorage.getItem('lang'))}catch(e){}if(L.indexOf(s)<0){s=(navigator.language||'tr').slice(0,2).toLowerCase();if(L.indexOf(s)<0)s='tr'}document.write('<script src="i18n-'+s+'.js?v=87"><\/script>')})()</script>
+<script src="app.js?v=87"></script>
 </body>
 </html>
