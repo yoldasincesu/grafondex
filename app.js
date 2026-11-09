@@ -12,9 +12,17 @@ function openLiveAlertMatch() {
   return null;
 }
 
-function watchLiveAlertMatch(league, id, teams = []) {
-  if (!liveAlertMatches.has(id)) {
-    liveAlertMatches.set(id, { league, teams, nextCheck: 0, events: null, score: null });
+function watchLiveAlertMatch(league, id, teams = [], beforeKickoff = false) {
+  let match = liveAlertMatches.get(id);
+  if (!match) {
+    match = { league, teams, nextCheck: 0, events: null, score: null };
+    liveAlertMatches.set(id, match);
+  } else if (teams.length) {
+    match.teams = teams;
+  }
+  if (beforeKickoff && !match.score) {
+    match.score = [0, 0];
+    match.events ||= new Set();
   }
 }
 
@@ -33,7 +41,8 @@ function watchingLiveAlertMatch(id, match, open = openLiveAlertMatch()) {
 
 async function discoverLiveAlertFavorites() {
   if (liveAlertDiscovering || Date.now() < liveAlertDiscoveryAt) return;
-  liveAlertDiscoveryAt = Date.now() + (lowData() ? 60000 : 10000);
+  const discoveryStartedAt = Date.now();
+  liveAlertDiscoveryAt = discoveryStartedAt + (lowData() ? 60000 : 10000);
   const leagues = new Set(favs.filter(favorite =>
     /^\d+$/.test(String(favorite.id)) && sportOf(favorite.league) === "soccer" && !isTff(favorite.league)
   ).map(favorite => favorite.league));
@@ -44,9 +53,17 @@ async function discoverLiveAlertFavorites() {
       if (document.hidden) return;
       for (const event of data.events || []) {
         const competition = event.competitions?.[0];
-        if ((competition?.status || event.status)?.type?.state !== "in") continue;
+        const state = (competition?.status || event.status)?.type?.state;
+        const kickoff = Date.parse(competition?.date || event.date);
+        const untilKickoff = kickoff - Date.now();
+        const startingSoon = state === "pre" && untilKickoff >= -120000 && untilKickoff <= 120000;
+        if (state !== "in" && !startingSoon) continue;
         const teams = (competition?.competitors || []).map(side => side.team?.id).filter(Boolean);
-        if (teams.some(team => isFav(team, league))) watchLiveAlertMatch(league, String(event.id), teams);
+        if (!teams.some(team => isFav(team, league))) continue;
+
+        // A favorite can kick off while its scoreboard request is in flight.
+        const kickedOffDuringDiscovery = state === "in" && kickoff >= discoveryStartedAt && untilKickoff <= 0;
+        watchLiveAlertMatch(league, String(event.id), teams, startingSoon || kickedOffDuringDiscovery);
       }
     }));
   } finally {
@@ -102,6 +119,7 @@ async function checkLiveAlertMatch(id, match, focused) {
       const untilKickoff = Date.parse(competition.date) - Date.now();
       delay = untilKickoff > 60000 ? Math.min(300000, untilKickoff - 45000) : Math.max(delay, 5000);
       match.score = [0, 0];
+      match.events ||= new Set();
       liveAlertNotices(match, data, [home, away]);
       return;
     }
