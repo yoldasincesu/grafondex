@@ -828,6 +828,21 @@ html[data-theme] .match:active,html[data-theme] .lrow a:active,html[data-theme] 
 html[data-theme] .seg a,html[data-theme] .seg button{transition:color .15s,border-color .2s}
 @media (prefers-reduced-motion:reduce){html[data-theme] *{animation:none!important;transition:none!important}}
 html[data-theme] .tchero .livetag{background:var(--live);color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;letter-spacing:.04em}
+html[data-theme] .matchhero .sc{font-size:clamp(29px,9.5vw,42px);white-space:nowrap}
+.matchhero .side>a{max-width:100%}
+.matchhero .side .big{max-width:100%;object-fit:contain}
+html[data-theme] .matchhero .side .tinit.big{font-size:26px}
+.matchperiodscroll{overflow-x:auto}
+.matchperiods .lines th,.matchperiods .lines td{padding:8px 6px}
+.matchperiods .lines thead th{white-space:nowrap}
+.matchperiods .lines tbody th{text-align:start;border-top:1px solid var(--line);border-inline-start:3px solid var(--side);color:var(--text);font-size:12px;font-weight:700;overflow-wrap:anywhere}
+.matchperiods .lines tbody th .logo{vertical-align:middle;margin-inline-end:4px}
+.matchperiods .lines .home{--side:var(--hc)}
+.matchperiods .lines .away{--side:var(--ac)}
+.matchperiods .lines .p{font-weight:800;background:color-mix(in srgb,var(--side) 14%,transparent)}
+
+.stnew .ptdelta{display:inline-block;padding:2px 4px;border-radius:4px;color:var(--ok,#16813d);background:color-mix(in srgb,var(--ok,#16813d) 12%,transparent);font-size:10px;white-space:nowrap}.stnew .lvresult{margin-inline-start:4px;color:var(--muted);font-size:10px;white-space:nowrap}
+
 .ui-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--live);flex:none;animation:livemin 1.6s ease-in-out infinite}
 #dmbtn{position:relative}.hbadge{position:absolute;top:4px;right:3px;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--live);color:#fff;font:700 10px/16px Inter,system-ui,sans-serif;font-style:normal;text-align:center;box-shadow:0 0 0 2px var(--bg)}
 html[data-theme] .livehero.mday{background:linear-gradient(120deg,color-mix(in srgb,var(--hc) 34%,var(--card)) 0%,var(--card) 45%,var(--card) 55%,color-mix(in srgb,var(--ac) 34%,var(--card)) 100%);border:1px solid var(--line)}
@@ -1195,7 +1210,7 @@ html[data-tone="blue"] .sk{background:linear-gradient(90deg,#14306a 25%,#1d3c7c 
   <a href="#/profile" data-tab="profile"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></i><span>Profil</span></a>
   <a href="#/settings" data-tab="settings"><i class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></i><span>Ayarlar</span></a>
 </nav>
-<script>(function(){var L=["tr","en","de","ru","ku","fr","es","pl"],s;try{s=JSON.parse(localStorage.getItem('lang'))}catch(e){}if(L.indexOf(s)<0){s=(navigator.language||'tr').slice(0,2).toLowerCase();if(L.indexOf(s)<0)s='tr'}document.write('<script src="i18n-'+s+'.js?v=87"><\/script>')})()</script>
-<script src="app.js?v=87"></script>
+<script>(function(){var L=["tr","en","de","ru","ku","fr","es","pl"],s;try{s=JSON.parse(localStorage.getItem('lang'))}catch(e){}if(L.indexOf(s)<0){s=(navigator.language||'tr').slice(0,2).toLowerCase();if(L.indexOf(s)<0)s='tr'}document.write('<script src="i18n-'+s+'.js?v=88"><\/script>')})()</script>
+<script src="app.js?v=88"></script>
 </body>
 </html>
