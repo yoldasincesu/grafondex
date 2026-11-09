@@ -33,7 +33,7 @@ function watchingLiveAlertMatch(id, match, open = openLiveAlertMatch()) {
 
 async function discoverLiveAlertFavorites() {
   if (liveAlertDiscovering || Date.now() < liveAlertDiscoveryAt) return;
-  liveAlertDiscoveryAt = Date.now() + (lowData() ? 60000 : 15000);
+  liveAlertDiscoveryAt = Date.now() + (lowData() ? 60000 : 10000);
   const leagues = new Set(favs.filter(favorite =>
     /^\d+$/.test(String(favorite.id)) && sportOf(favorite.league) === "soccer" && !isTff(favorite.league)
   ).map(favorite => favorite.league));
@@ -85,11 +85,11 @@ function liveAlertNotices(match, data, teams) {
   return notices;
 }
 
-async function checkLiveAlertMatch(id, match) {
+async function checkLiveAlertMatch(id, match, focused) {
   match.pending = true;
-  let delay = lowData() ? 15000 : 5000;
+  let delay = lowData() ? 15000 : focused ? 2000 : 3000;
   try {
-    const data = await get(`${api(match.league)}/summary?event=${id}`, 4000);
+    const data = await get(`${api(match.league)}/summary?event=${id}`, Math.min(4000, delay - 1000));
     if (document.hidden || liveAlertMatches.get(id) !== match || !watchingLiveAlertMatch(id, match)) return;
     const competition = data.header?.competitions?.[0];
     const type = competition?.status?.type;
@@ -100,7 +100,7 @@ async function checkLiveAlertMatch(id, match) {
     match.teams = [home.team.id, away.team.id];
     if (type.state === "pre") {
       const untilKickoff = Date.parse(competition.date) - Date.now();
-      delay = untilKickoff > 60000 ? Math.min(300000, untilKickoff - 45000) : Math.max(delay, 15000);
+      delay = untilKickoff > 60000 ? Math.min(300000, untilKickoff - 45000) : Math.max(delay, 5000);
       match.score = [0, 0];
       liveAlertNotices(match, data, [home, away]);
       return;
@@ -151,12 +151,12 @@ function tickLiveAlerts() {
     if (!watchingLiveAlertMatch(id, match, open)) {
       liveAlertMatches.delete(id);
     } else if (!match.pending && Date.now() >= match.nextCheck) {
-      void checkLiveAlertMatch(id, match);
+      void checkLiveAlertMatch(id, match, open?.id === id);
     }
   }
 }
 
-setInterval(tickLiveAlerts, 1000);
+setInterval(tickLiveAlerts, 500);
 addEventListener("hashchange", tickLiveAlerts);
 document.addEventListener("visibilitychange", tickLiveAlerts);
 tickLiveAlerts();
